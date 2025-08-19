@@ -4,15 +4,16 @@ import 'package:menstrual_health_ai/constants/app_colors.dart';
 import 'package:menstrual_health_ai/constants/text_styles.dart';
 import 'package:menstrual_health_ai/models/user_data.dart';
 import 'package:menstrual_health_ai/providers/user_data_provider.dart';
-import 'package:menstrual_health_ai/providers/auth_provider.dart'; // Add this import
+import 'package:menstrual_health_ai/providers/auth_provider.dart';
 import 'package:menstrual_health_ai/screens/ai_features/ai_coach_screen.dart';
-import 'package:menstrual_health_ai/screens/auth/login_screen.dart'; // Add this import
+import 'package:menstrual_health_ai/screens/auth/login_screen.dart';
 import 'package:menstrual_health_ai/screens/cycle/cycle_calendar_screen.dart';
 import 'package:menstrual_health_ai/screens/cycle/log_symptoms_screen.dart';
 import 'package:menstrual_health_ai/screens/doctor/doctor_mode_screen.dart';
 import 'package:menstrual_health_ai/screens/premium/premium_screen.dart';
 import 'package:menstrual_health_ai/screens/reminders/reminders_screen.dart';
 import 'package:menstrual_health_ai/services/ai_service.dart';
+import 'package:menstrual_health_ai/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -37,19 +38,115 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isLoadingRecommendations = true;
   DateTime _selectedDate = DateTime.now();
 
+  // Added new state variables for API data
+  Map<String, dynamic>? _userProfile;
+  Map<String, dynamic>? _userStats;
+  List<dynamic> _recentCycles = [];
+  List<dynamic> _recentSymptoms = [];
+  List<dynamic> _doctorConsultations = [];
+  Map<String, dynamic>? _aiDashboardInsights;
+
+  bool _isLoadingProfile = true;
+  bool _isLoadingStats = true;
+  bool _isLoadingCycles = true;
+  bool _isLoadingSymptoms = true;
+  bool _isLoadingConsultations = true;
+  bool _isLoadingAIDashboardInsights = true;
+
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _loadAIData();
+    _loadData();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    // Load all data at once
+    await Future.wait([
+      _loadUserProfile(),
+      _loadUserStats(),
+      _loadAIData(),
+      _loadCycles(),
+      _loadSymptoms(),
+      _loadDoctorConsultations(),
+      _loadAIDashboardInsights(),
+    ]);
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      setState(() {
+        _isLoadingProfile = true;
+      });
+
+      print('🔄 Loading user profile...');
+      final response = await ApiService.getUserProfile();
+
+      if (response != null && response['success'] == true) {
+        setState(() {
+          _userProfile = response['data'];
+          _isLoadingProfile = false;
+        });
+
+        print('✅ User profile loaded:');
+        print('👤 Name: ${_userProfile?['name']}');
+        print('📧 Email: ${_userProfile?['email']}');
+        print('🩸 Cycle Length: ${_userProfile?['cycleLength']} days');
+        print('🩸 Period Length: ${_userProfile?['periodLength']} days');
+        print('📆 Last Period: ${_userProfile?['lastPeriodDate']}');
+      } else {
+        print('❌ Failed to load user profile');
+        setState(() {
+          _isLoadingProfile = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading user profile: $e');
+      setState(() {
+        _isLoadingProfile = false;
+      });
+    }
+  }
+
+  Future<void> _loadUserStats() async {
+    try {
+      setState(() {
+        _isLoadingStats = true;
+      });
+
+      print('🔄 Loading user statistics...');
+      final response = await ApiService.getUserStats();
+
+      if (response != null && response['success'] == true) {
+        setState(() {
+          _userStats = response['stats'];
+          _isLoadingStats = false;
+        });
+
+        print('✅ User stats loaded:');
+        print('📊 Cycles tracked: ${_userStats?['cyclesTracked']}');
+        print('📏 Avg cycle length: ${_userStats?['avgCycleLength']} days');
+        print('📏 Avg period length: ${_userStats?['avgPeriodLength']} days');
+      } else {
+        print('❌ Failed to load user statistics');
+        setState(() {
+          _isLoadingStats = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading user statistics: $e');
+      setState(() {
+        _isLoadingStats = false;
+      });
+    }
   }
 
   Future<void> _loadAIData() async {
@@ -68,37 +165,17 @@ class _HomeScreenState extends State<HomeScreen>
       final insights = await _aiService.generateDailyInsights(userData);
 
       // Load reminders
-      final behaviorPatterns = {
-        'sleep': 'Irregular',
-        'stress': 'High',
-        'exercise': 'Moderate',
-        'hydration': 'Low',
-        'medication': 'None'
-      };
       final reminders = await _aiService.generateSmartReminders(userData);
 
       // Load predictions
       final predictions = await _aiService.getCalendarPredictions(userData);
 
       // Load recommendations
-      final today = DateTime.now();
-      final daysSinceLastPeriod =
-          today.difference(userData.lastPeriodDate).inDays;
-      final currentCycleDay = (daysSinceLastPeriod % userData.cycleLength) + 1;
-
-      String currentPhase;
-      if (currentCycleDay <= userData.periodLength) {
-        currentPhase = "Menstrual";
-      } else if (currentCycleDay <= userData.cycleLength / 2) {
-        currentPhase = "Follicular";
-      } else if (currentCycleDay == (userData.cycleLength / 2).round()) {
-        currentPhase = "Ovulation";
-      } else {
-        currentPhase = "Luteal";
-      }
-
       final recommendations =
           await _aiService.generatePersonalizedRecommendations(userData);
+
+      print('✅ Loaded recommendations:');
+      print(recommendations);
 
       setState(() {
         _aiInsights = insights;
@@ -130,6 +207,7 @@ class _HomeScreenState extends State<HomeScreen>
           'ovulation': 'Complete your profile',
           'fertileWindow': 'Complete your profile',
         };
+        // Initialize with default recommendations
         _recommendations = {
           'nutrition': [
             'Complete your profile to get personalized nutrition recommendations'
@@ -152,6 +230,238 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  Future<void> _loadCycles() async {
+    try {
+      setState(() {
+        _isLoadingCycles = true;
+      });
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.id;
+
+      if (userId == null) {
+        print('❌ Cannot load cycles: User ID is null');
+        setState(() {
+          _isLoadingCycles = false;
+        });
+        return;
+      }
+
+      print('🔄 Loading cycles for user: $userId');
+      final response = await ApiService.getCycles(userId: userId);
+
+      if (response != null && response['success'] == true) {
+        setState(() {
+          _recentCycles = response['data'] ?? [];
+          _isLoadingCycles = false;
+        });
+
+        print('✅ Cycles loaded: ${_recentCycles.length} cycles');
+        if (_recentCycles.isNotEmpty) {
+          print('📅 Most recent cycle:');
+          print('   Start date: ${_recentCycles[0]['startDate']}');
+          print('   End date: ${_recentCycles[0]['endDate']}');
+          print('   Length: ${_recentCycles[0]['cycleLength']} days');
+        }
+      } else {
+        print('❌ Failed to load cycles');
+        setState(() {
+          _isLoadingCycles = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading cycles: $e');
+      setState(() {
+        _isLoadingCycles = false;
+      });
+    }
+  }
+
+  Future<void> _loadSymptoms() async {
+    try {
+      setState(() {
+        _isLoadingSymptoms = true;
+      });
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.id;
+
+      if (userId == null) {
+        print('❌ Cannot load symptoms: User ID is null');
+        setState(() {
+          _isLoadingSymptoms = false;
+        });
+        return;
+      }
+
+      print('🔄 Loading symptoms for user: $userId');
+      final response = await ApiService.getSymptomLogs(userId: userId);
+
+      if (response != null && response['success'] == true) {
+        setState(() {
+          _recentSymptoms = response['data'] ?? [];
+          _isLoadingSymptoms = false;
+        });
+
+        print('✅ Symptoms loaded: ${_recentSymptoms.length} symptom logs');
+        if (_recentSymptoms.isNotEmpty) {
+          print('🤒 Most recent symptoms:');
+          print('   Date: ${_recentSymptoms[0]['date']}');
+          print('   Symptoms: ${_recentSymptoms[0]['symptoms']}');
+        }
+      } else {
+        print('❌ Failed to load symptoms');
+        setState(() {
+          _isLoadingSymptoms = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading symptoms: $e');
+      setState(() {
+        _isLoadingSymptoms = false;
+      });
+    }
+  }
+
+  Future<void> _loadDoctorConsultations() async {
+    try {
+      setState(() {
+        _isLoadingConsultations = true;
+      });
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.id;
+
+      if (userId == null) {
+        print('❌ Cannot load consultations: User ID is null');
+        setState(() {
+          _isLoadingConsultations = false;
+        });
+        return;
+      }
+
+      print('🔄 Loading doctor consultations for user: $userId');
+      final response = await ApiService.getDoctorConsultations(userId: userId);
+
+      if (response != null && response['success'] == true) {
+        setState(() {
+          _doctorConsultations = response['data'] ?? [];
+          _isLoadingConsultations = false;
+        });
+
+        print(
+            '✅ Doctor consultations loaded: ${_doctorConsultations.length} consultations');
+        if (_doctorConsultations.isNotEmpty) {
+          print('👩‍⚕️ Upcoming consultation:');
+          print('   Date: ${_doctorConsultations[0]['scheduledDate']}');
+          print('   Status: ${_doctorConsultations[0]['status']}');
+        }
+      } else {
+        print('❌ Failed to load doctor consultations');
+        setState(() {
+          _isLoadingConsultations = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading doctor consultations: $e');
+      setState(() {
+        _isLoadingConsultations = false;
+      });
+    }
+  }
+
+  Future<void> _loadAIDashboardInsights() async {
+    try {
+      setState(() {
+        _isLoadingAIDashboardInsights = true;
+      });
+
+      print('🔄 Loading AI dashboard insights...');
+      final response = await ApiService.getAIDashboardInsights();
+
+      if (response != null && response['success'] == true) {
+        setState(() {
+          _aiDashboardInsights = response;
+          _isLoadingAIDashboardInsights = false;
+        });
+
+        print('✅ AI insights loaded:');
+        print('💡 Insights: ${_aiDashboardInsights?['insights']}');
+        print('📅 Cycle predictions: ${_aiDashboardInsights?['cyclePredictions']}');
+        print('📝 Recommendations: ${_aiDashboardInsights?['recommendations']}');
+
+        // Update the AI insights from backend - use the actual insights field
+        if (_aiDashboardInsights?['insights'] != null) {
+          _aiInsights = [_aiDashboardInsights!['insights'].toString()];
+        }
+
+        // Update predictions
+        if (_aiDashboardInsights?['cyclePredictions'] != null) {
+          _predictions = {
+            'nextPeriod': _aiDashboardInsights?['cyclePredictions'] ?? 'Not available',
+            'ovulation': 'Coming soon',
+            'fertileWindow': 'Coming soon',
+          };
+        }
+        
+        // Parse and update recommendations if available
+        if (_aiDashboardInsights?['recommendations'] != null) {
+          try {
+            final recommendationsList = _aiDashboardInsights!['recommendations'] as List;
+            if (recommendationsList.isNotEmpty) {
+              // Create separate categories for recommendations
+              final nutritionRecs = recommendationsList
+                  .where((item) => item['category'] == 'Nutrition')
+                  .map((item) => item['text'].toString())
+                  .toList();
+                  
+              final exerciseRecs = recommendationsList
+                  .where((item) => item['category'] == 'Exercise')
+                  .map((item) => item['text'].toString())
+                  .toList();
+                  
+              final sleepRecs = recommendationsList
+                  .where((item) => item['category'] == 'Sleep')
+                  .map((item) => item['text'].toString())
+                  .toList();
+                  
+              final selfCareRecs = recommendationsList
+                  .where((item) => item['category'] == 'Self-Care')
+                  .map((item) => item['text'].toString())
+                  .toList();
+
+              // Update the recommendations map
+              _recommendations = {
+                'nutrition': nutritionRecs,
+                'exercise': exerciseRecs,
+                'sleep': sleepRecs,
+                'selfCare': selfCareRecs,
+              };
+              
+              print('✅ Processed recommendations by category:');
+              print('🍎 Nutrition: $nutritionRecs');
+              print('💪 Exercise: $exerciseRecs');
+              print('😴 Sleep: $sleepRecs');
+              print('🧘‍♀️ Self-Care: $selfCareRecs');
+            }
+          } catch (e) {
+            print('❌ Error parsing recommendations: $e');
+          }
+        }
+      } else {
+        print('❌ Failed to load AI dashboard insights');
+        setState(() {
+          _isLoadingAIDashboardInsights = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading AI dashboard insights: $e');
+      setState(() {
+        _isLoadingAIDashboardInsights = false;
+      });
+    }
+  }
+
   void _onDateSelected(DateTime date) {
     setState(() {
       _selectedDate = date;
@@ -163,18 +473,23 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   Widget build(BuildContext context) {
     final userData = Provider.of<UserDataProvider>(context).userData;
-    final authProvider = Provider.of<AuthProvider>(context); // Add this line
+    final authProvider = Provider.of<AuthProvider>(context);
     final size = MediaQuery.of(context).size;
 
     // Use authenticated user data if available
-    final displayName =
-        authProvider.currentUser?.name ?? userData?.name ?? 'there';
-    final userEmail = authProvider.currentUser?.email ?? userData?.email ?? '';
+    final displayName = _userProfile?['name'] ??
+        authProvider.currentUser?.name ??
+        userData?.name ??
+        'there';
+    final userEmail = _userProfile?['email'] ??
+        authProvider.currentUser?.email ??
+        userData?.email ??
+        '';
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: RefreshIndicator(
-        onRefresh: _loadAIData,
+        onRefresh: _loadData,
         child: CustomScrollView(
           slivers: [
             // App Bar
@@ -241,15 +556,15 @@ class _HomeScreenState extends State<HomeScreen>
                         children: [
                           Text(
                             "Hello, $displayName!",
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
-                            _getCycleStatusText(userData),
+                            _getCycleStatusText(),
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.9),
                               fontSize: 14,
@@ -271,14 +586,15 @@ class _HomeScreenState extends State<HomeScreen>
                       top: 240,
                       left: 0,
                       right: 0,
-                      child: _buildCalendarStrip(userData),
+                      child: _buildCalendarStrip(),
                     ),
                   ],
                 ),
               ),
               actions: [
                 IconButton(
-                  icon: Icon(Icons.notifications_outlined, color: Colors.white),
+                  icon: const Icon(Icons.notifications_outlined,
+                      color: Colors.white),
                   onPressed: () {
                     setState(() {
                       _showReminders = !_showReminders;
@@ -286,21 +602,23 @@ class _HomeScreenState extends State<HomeScreen>
                   },
                 ),
                 IconButton(
-                  icon: Icon(Icons.settings_outlined, color: Colors.white),
+                  icon:
+                      const Icon(Icons.settings_outlined, color: Colors.white),
                   onPressed: () {
                     Navigator.pushNamed(context, '/settings');
                   },
                 ),
                 // Add logout button
                 PopupMenuButton<String>(
-                  icon: Icon(Icons.account_circle, color: Colors.white),
+                  icon: const Icon(Icons.account_circle, color: Colors.white),
                   onSelected: (value) async {
                     if (value == 'logout') {
                       await authProvider.logout();
                       if (!mounted) return;
                       Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(builder: (context) => LoginScreen()),
+                        MaterialPageRoute(
+                            builder: (context) => const LoginScreen()),
                       );
                     }
                   },
@@ -342,11 +660,10 @@ class _HomeScreenState extends State<HomeScreen>
             ),
 
             SliverToBoxAdapter(
-              child: Container(
-                // width: 300,
+              child: SizedBox(
                 height: 100,
                 child: ListView(
-                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   scrollDirection: Axis.horizontal,
                   children: [
                     _buildQuickActionCard(
@@ -357,55 +674,56 @@ class _HomeScreenState extends State<HomeScreen>
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => LogSymptomsScreen()),
+                              builder: (context) => const LogSymptomsScreen()),
                         );
                       },
                     ),
                     _buildQuickActionCard(
                       icon: Icons.calendar_month_rounded,
                       title: "View Calendar",
-                      color: Color(0xFF6C63FF),
+                      color: const Color(0xFF6C63FF),
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => CycleCalendarScreen()),
+                              builder: (context) =>
+                                  const CycleCalendarScreen()),
                         );
                       },
                     ),
                     _buildQuickActionCard(
                       icon: Icons.auto_awesome,
                       title: "AI Coach",
-                      color: Color(0xFF00D9C6),
+                      color: const Color(0xFF00D9C6),
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => AiCoachScreen()),
+                              builder: (context) => const AiCoachScreen()),
                         );
                       },
                     ),
                     _buildQuickActionCard(
                       icon: Icons.medical_services_outlined,
                       title: "Doctor Mode",
-                      color: Color(0xFFFF5C8A),
+                      color: const Color(0xFFFF5C8A),
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => DoctorModeScreen()),
+                              builder: (context) => const DoctorModeScreen()),
                         );
                       },
                     ),
                     _buildQuickActionCard(
                       icon: Icons.notifications_active_outlined,
                       title: "Reminders",
-                      color: Color(0xFFFFB347),
+                      color: const Color(0xFFFFB347),
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => RemindersScreen()),
+                              builder: (context) => const RemindersScreen()),
                         );
                       },
                     ),
@@ -434,7 +752,8 @@ class _HomeScreenState extends State<HomeScreen>
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => CycleCalendarScreen()),
+                              builder: (context) =>
+                                  const CycleCalendarScreen()),
                         );
                       },
                       child: const Text(
@@ -474,7 +793,7 @@ class _HomeScreenState extends State<HomeScreen>
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => AiCoachScreen()),
+                              builder: (context) => const AiCoachScreen()),
                         );
                       },
                       child: const Text(
@@ -514,7 +833,7 @@ class _HomeScreenState extends State<HomeScreen>
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => PremiumScreen()),
+                              builder: (context) => const PremiumScreen()),
                         );
                       },
                       child: const Row(
@@ -541,7 +860,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
 
             // Bottom padding
-            SliverToBoxAdapter(
+            const SliverToBoxAdapter(
               child: SizedBox(height: 24),
             ),
           ],
@@ -550,7 +869,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildCalendarStrip(UserData? userData) {
+  Widget _buildCalendarStrip() {
     // Get today's date
     final today = DateTime.now();
 
@@ -609,13 +928,18 @@ class _HomeScreenState extends State<HomeScreen>
 
                   // Check if this date is in period (for highlighting)
                   bool isInPeriod = false;
-                  if (userData != null) {
-                    final daysSinceLastPeriod =
-                        date.difference(userData.lastPeriodDate).inDays;
-                    final cycleDay =
-                        (daysSinceLastPeriod % userData.cycleLength) + 1;
-                    isInPeriod =
-                        cycleDay > 0 && cycleDay <= userData.periodLength;
+                  if (_userProfile != null) {
+                    final lastPeriodDate = DateTime.tryParse(
+                        _userProfile?['lastPeriodDate'] ?? '');
+                    final periodLength = _userProfile?['periodLength'] ?? 5;
+                    final cycleLength = _userProfile?['cycleLength'] ?? 28;
+
+                    if (lastPeriodDate != null) {
+                      final daysSinceLastPeriod =
+                          date.difference(lastPeriodDate).inDays;
+                      final cycleDay = (daysSinceLastPeriod % cycleLength) + 1;
+                      isInPeriod = cycleDay > 0 && cycleDay <= periodLength;
+                    }
                   }
 
                   return Expanded(
@@ -625,10 +949,10 @@ class _HomeScreenState extends State<HomeScreen>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           // Today label
-                          Container(
+                          SizedBox(
                             height: 16,
                             child: isToday
-                                ? Text(
+                                ? const Text(
                                     "TODAY",
                                     style: TextStyle(
                                       color: Colors.white,
@@ -636,7 +960,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       fontWeight: FontWeight.bold,
                                     ),
                                   )
-                                : SizedBox(),
+                                : const SizedBox(),
                           ),
 
                           const SizedBox(height: 4),
@@ -678,18 +1002,18 @@ class _HomeScreenState extends State<HomeScreen>
                           const SizedBox(height: 4),
 
                           // Period indicator dot
-                          Container(
+                          SizedBox(
                             height: 8,
                             child: isInPeriod && !isToday
                                 ? Container(
                                     width: 6,
                                     height: 6,
-                                    decoration: BoxDecoration(
+                                    decoration: const BoxDecoration(
                                       color: Colors.white,
                                       shape: BoxShape.circle,
                                     ),
                                   )
-                                : SizedBox(),
+                                : const SizedBox(),
                           ),
                         ],
                       ),
@@ -708,20 +1032,34 @@ class _HomeScreenState extends State<HomeScreen>
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  String _getCycleStatusText(UserData? userData) {
-    if (userData == null) {
+  String _getCycleStatusText() {
+    if (_userProfile == null) {
       return "Complete your profile to track your cycle";
     }
 
-    final today = DateTime.now();
-    final daysSinceLastPeriod =
-        today.difference(userData.lastPeriodDate).inDays;
-    final currentCycleDay = (daysSinceLastPeriod % userData.cycleLength) + 1;
+    // Get cycle information from user profile
+    final lastPeriodDateString = _userProfile?['lastPeriodDate'];
+    final periodLength = _userProfile?['periodLength'] ?? 5;
+    final cycleLength = _userProfile?['cycleLength'] ?? 28;
 
-    if (currentCycleDay <= userData.periodLength) {
+    if (lastPeriodDateString == null) {
+      return "Add your last period date to track your cycle";
+    }
+
+    // Parse date
+    final lastPeriodDate = DateTime.tryParse(lastPeriodDateString);
+    if (lastPeriodDate == null) {
+      return "Invalid period date format";
+    }
+
+    final today = DateTime.now();
+    final daysSinceLastPeriod = today.difference(lastPeriodDate).inDays;
+    final currentCycleDay = (daysSinceLastPeriod % cycleLength) + 1;
+
+    if (currentCycleDay <= periodLength) {
       return "Day $currentCycleDay of your period";
     } else {
-      final daysUntilNextPeriod = userData.cycleLength - currentCycleDay + 1;
+      final daysUntilNextPeriod = cycleLength - currentCycleDay + 1;
       return "Day $currentCycleDay of your cycle • $daysUntilNextPeriod days until next period";
     }
   }
@@ -736,7 +1074,7 @@ class _HomeScreenState extends State<HomeScreen>
       onTap: onTap,
       child: Container(
         width: 120,
-        margin: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -744,7 +1082,7 @@ class _HomeScreenState extends State<HomeScreen>
             BoxShadow(
               color: color.withOpacity(0.2),
               blurRadius: 8,
-              offset: Offset(0, 2),
+              offset: const Offset(0, 2),
             ),
           ],
         ),
@@ -752,7 +1090,7 @@ class _HomeScreenState extends State<HomeScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: EdgeInsets.all(10),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 shape: BoxShape.circle,
@@ -763,10 +1101,10 @@ class _HomeScreenState extends State<HomeScreen>
                 size: 24,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               title,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppColors.primary,
@@ -781,8 +1119,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildRemindersPanel() {
     return Container(
-      margin: EdgeInsets.all(16),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -790,7 +1128,7 @@ class _HomeScreenState extends State<HomeScreen>
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -809,7 +1147,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
               IconButton(
-                icon: Icon(Icons.close, size: 20),
+                icon: const Icon(Icons.close, size: 20),
                 onPressed: () {
                   setState(() {
                     _showReminders = false;
@@ -818,7 +1156,7 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           if (_isLoadingReminders)
             const Center(
               child: CircularProgressIndicator(
@@ -850,8 +1188,8 @@ class _HomeScreenState extends State<HomeScreen>
                 }
 
                 return Container(
-                  margin: EdgeInsets.only(bottom: 12),
-                  padding: EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(12),
@@ -862,7 +1200,7 @@ class _HomeScreenState extends State<HomeScreen>
                   child: Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withOpacity(0.1),
                           shape: BoxShape.circle,
@@ -873,7 +1211,7 @@ class _HomeScreenState extends State<HomeScreen>
                           size: 20,
                         ),
                       ),
-                      SizedBox(width: 12),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -886,7 +1224,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 color: AppColors.textPrimary,
                               ),
                             ),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             Text(
                               reminder['description'],
                               style: const TextStyle(
@@ -898,8 +1236,8 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ),
                       Container(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
@@ -918,17 +1256,18 @@ class _HomeScreenState extends State<HomeScreen>
                 );
               }).toList(),
             ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Center(
             child: TextButton.icon(
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => RemindersScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const RemindersScreen()),
                 );
               },
-              icon: Icon(Icons.settings, size: 16),
-              label: Text("Manage Reminders"),
+              icon: const Icon(Icons.settings, size: 16),
+              label: const Text("Manage Reminders"),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.primary,
               ),
@@ -940,9 +1279,20 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildPredictionsCard() {
+    String nextPeriodText = _predictions['nextPeriod'] ?? 'Unable to predict';
+    String ovulationText = _predictions['ovulation'] ?? 'Unable to predict';
+    String fertileWindowText =
+        _predictions['fertileWindow'] ?? 'Unable to predict';
+
+    // Use AI dashboard insights if available
+    if (_aiDashboardInsights != null &&
+        _aiDashboardInsights!['cyclePredictions'] != null) {
+      nextPeriodText = _aiDashboardInsights!['cyclePredictions'].toString();
+    }
+
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16),
-      padding: EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -955,9 +1305,9 @@ class _HomeScreenState extends State<HomeScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Color(0xFF6A11CB).withOpacity(0.3),
+            color: const Color(0xFF6A11CB).withOpacity(0.3),
             blurRadius: 10,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -966,12 +1316,12 @@ class _HomeScreenState extends State<HomeScreen>
           Row(
             children: [
               Container(
-                padding: EdgeInsets.all(10),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.calendar_month,
                   color: Colors.white,
                   size: 24,
@@ -988,8 +1338,8 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
-          SizedBox(height: 20),
-          if (_isLoadingPredictions)
+          const SizedBox(height: 20),
+          if (_isLoadingPredictions || _isLoadingAIDashboardInsights)
             const Center(
               child: CircularProgressIndicator(
                 color: Colors.white,
@@ -1001,25 +1351,25 @@ class _HomeScreenState extends State<HomeScreen>
                 _buildPredictionRow(
                   icon: Icons.calendar_today,
                   title: "Next Period",
-                  value: _predictions['nextPeriod'] ?? 'Unable to predict',
+                  value: nextPeriodText,
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 _buildPredictionRow(
                   icon: Icons.egg_alt,
                   title: "Ovulation",
-                  value: _predictions['ovulation'] ?? 'Unable to predict',
+                  value: ovulationText,
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 _buildPredictionRow(
                   icon: Icons.favorite,
                   title: "Fertile Window",
-                  value: _predictions['fertileWindow'] ?? 'Unable to predict',
+                  value: fertileWindowText,
                 ),
               ],
             ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Container(
-            padding: EdgeInsets.all(12),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
@@ -1055,9 +1405,10 @@ class _HomeScreenState extends State<HomeScreen>
     required String value,
   }) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: EdgeInsets.all(8),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
@@ -1068,35 +1419,50 @@ class _HomeScreenState extends State<HomeScreen>
             size: 16,
           ),
         ),
-        SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.white.withOpacity(0.8),
+        const SizedBox(width: 12),
+        Expanded(
+          // Added Expanded widget here to constrain the text
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.8),
+                ),
               ),
-            ),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                // Ensure long text wraps properly
+                overflow: TextOverflow.ellipsis,
+                maxLines: 4,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
   }
 
   Widget _buildInsightsCard() {
+    // Use insights from API if available - specifically the 'insights' field
+    String insightText = "Complete your profile to get personalized insights.";
+    
+    if (_aiDashboardInsights != null && _aiDashboardInsights!['insights'] != null) {
+      insightText = _aiDashboardInsights!['insights'].toString();
+    } else if (_aiInsights.isNotEmpty) {
+      insightText = _aiInsights.join("\n\n");
+    }
+
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16),
-      padding: EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -1104,7 +1470,7 @@ class _HomeScreenState extends State<HomeScreen>
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -1114,18 +1480,18 @@ class _HomeScreenState extends State<HomeScreen>
           Row(
             children: [
               Container(
-                padding: EdgeInsets.all(10),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.auto_awesome,
                   color: AppColors.primary,
                   size: 24,
                 ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               const Text(
                 "AI Insights",
                 style: TextStyle(
@@ -1136,46 +1502,24 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
-          SizedBox(height: 16),
-          if (_isLoadingInsights)
-            Center(
+          const SizedBox(height: 16),
+          if (_isLoadingInsights || _isLoadingAIDashboardInsights)
+            const Center(
               child: CircularProgressIndicator(
                 color: AppColors.primary,
               ),
             )
           else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: _aiInsights.map((insight) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        margin: EdgeInsets.only(top: 4),
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          insight,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: AppColors.textPrimary,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+            Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: Text(
+                insightText,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: AppColors.textPrimary,
+                  height: 1.4,
+                ),
+              ),
             ),
         ],
       ),
@@ -1184,7 +1528,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildRecommendationsCard() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -1192,7 +1536,7 @@ class _HomeScreenState extends State<HomeScreen>
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -1202,7 +1546,7 @@ class _HomeScreenState extends State<HomeScreen>
           Container(
             decoration: BoxDecoration(
               color: AppColors.primary.withOpacity(0.05),
-              borderRadius: BorderRadius.only(
+              borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(20),
                 topRight: Radius.circular(20),
               ),
@@ -1213,7 +1557,7 @@ class _HomeScreenState extends State<HomeScreen>
               unselectedLabelColor: AppColors.textSecondary,
               indicatorColor: AppColors.primary,
               indicatorSize: TabBarIndicatorSize.label,
-              tabs: [
+              tabs: const [
                 Tab(text: "Nutrition"),
                 Tab(text: "Exercise"),
                 Tab(text: "Sleep"),
@@ -1223,11 +1567,10 @@ class _HomeScreenState extends State<HomeScreen>
           ),
 
           // Tab content
-          Container(
+          SizedBox(
             height: 200,
-            padding: EdgeInsets.all(20),
-            child: _isLoadingRecommendations
-                ? Center(
+            child: _isLoadingRecommendations || _isLoadingAIDashboardInsights
+                ? const Center(
                     child: CircularProgressIndicator(
                       color: AppColors.primary,
                     ),
@@ -1249,23 +1592,23 @@ class _HomeScreenState extends State<HomeScreen>
 
           // Premium button
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
               color: AppColors.primary.withOpacity(0.05),
-              borderRadius: BorderRadius.only(
+              borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(20),
                 bottomRight: Radius.circular(20),
               ),
             ),
             child: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.star,
                   color: Color(0xFFFFD700),
                   size: 20,
                 ),
-                SizedBox(width: 8),
-                Expanded(
+                const SizedBox(width: 8),
+                const Expanded(
                   child: Text(
                     "Upgrade to Premium for more personalized recommendations",
                     style: TextStyle(
@@ -1278,10 +1621,11 @@ class _HomeScreenState extends State<HomeScreen>
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => PremiumScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => const PremiumScreen()),
                     );
                   },
-                  child: Text(
+                  child: const Text(
                     "Upgrade",
                     style: TextStyle(
                       color: AppColors.primary,
@@ -1298,28 +1642,49 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildRecommendationsList(List<dynamic> recommendations) {
+    // Handle case where recommendations might be null or empty
+    if (recommendations.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text(
+            "No recommendations available yet. Complete your profile for personalized suggestions.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14.0,
+            ),
+          ),
+        ),
+      );
+    }
+
     return ListView.builder(
+      padding: const EdgeInsets.all(16.0),
       itemCount: recommendations.length,
       itemBuilder: (context, index) {
+        // Safely convert any recommendation type to string
+        String recommendation = recommendations[index].toString();
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                margin: EdgeInsets.only(top: 4),
+                margin: const EdgeInsets.only(top: 4),
                 width: 8,
                 height: 8,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: AppColors.primary,
                   shape: BoxShape.circle,
                 ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  recommendations[index],
-                  style: TextStyle(
+                  recommendation,
+                  style: const TextStyle(
                     fontSize: 14,
                     color: AppColors.textPrimary,
                     height: 1.4,

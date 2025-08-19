@@ -88,12 +88,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       print('📧 Email: ${_emailController.text.trim()}');
       print('✅ User authenticated and ready for onboarding');
 
-      // Navigate directly to onboarding screens
+      // Navigate directly to onboarding screens with user name
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => const OnboardingScreens(),
+          builder: (context) =>
+              OnboardingScreens(userName: _nameController.text.trim()),
         ),
       );
 

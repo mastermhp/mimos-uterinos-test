@@ -623,47 +623,45 @@ class ApiService {
     required String userId,
     required String date,
     required List<Map<String, dynamic>> symptoms,
-    String flow = 'none',
-    String mood = 'normal',
+    String? flow,
+    String? mood,
     double? temperature,
-    String notes = '',
+    String? notes,
   }) async {
     try {
-      print('🔄 Creating symptom log for user: $userId');
-
+      print('🔄 Creating symptom log for user: $userId on date: $date');
+      
+      final uri = Uri.parse('$baseUrl/symptoms');
       final headers = await _getHeaders(includeAuth: true);
-      final body = json.encode({
+      
+      final requestBody = {
         'userId': userId,
         'date': date,
         'symptoms': symptoms,
-        'flow': flow,
-        'mood': mood,
-        'temperature': temperature,
-        'notes': notes,
-      });
-
-      print('📤 Create Symptom Log Body: $body');
-
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/symptoms'),
-            headers: headers,
-            body: body,
-          )
-          .timeout(timeout);
-
-      print('📡 Create Symptom Response Status: ${response.statusCode}');
-      print('📡 Create Symptom Response: ${response.body}');
-
+        if (flow != null) 'flow': flow,
+        if (mood != null) 'mood': mood,
+        if (temperature != null) 'temperature': temperature,
+        if (notes != null) 'notes': notes,
+      };
+      
+      print('📤 Symptom log request body: $requestBody');
+      
+      final response = await http.post(
+        uri,
+        headers: headers,
+        body: jsonEncode(requestBody),
+      ).timeout(timeout);
+      
+      print('📡 Symptom Log Response Status: ${response.statusCode}');
+      print('📡 Symptom Log Response: ${response.body}');
+      
       return await _handleResponse(response);
-    } on SocketException {
-      throw ApiException(message: 'No internet connection');
-    } on HttpException {
-      throw ApiException(message: 'Network error occurred');
     } catch (e) {
       print('❌ Create symptom log error: $e');
-      throw ApiException(
-          message: 'Failed to create symptom log: ${e.toString()}');
+      return {
+        'success': false,
+        'message': 'Error creating symptom log: $e',
+      };
     }
   }
 
@@ -737,7 +735,7 @@ class ApiService {
     }
   }
 
-  // Get cycles for a user
+  // Get user cycles
   static Future<Map<String, dynamic>?> getCycles({
     required String userId,
   }) async {
@@ -762,7 +760,7 @@ class ApiService {
       throw ApiException(message: 'Network error occurred');
     } catch (e) {
       print('❌ Get cycles error: $e');
-      throw ApiException(message: 'Failed to load cycles: ${e.toString()}');
+      throw ApiException(message: 'Failed to get cycles: ${e.toString()}');
     }
   }
 
@@ -817,6 +815,38 @@ class ApiService {
     } catch (e) {
       print('❌ Create cycle error: $e');
       throw ApiException(message: 'Failed to create cycle: ${e.toString()}');
+    }
+  }
+
+  // Add cycle
+  static Future<Map<String, dynamic>?> addCycle(
+      Map<String, dynamic> cycleData) async {
+    try {
+      print('📤 Sending new cycle data to API: $cycleData');
+
+      final uri = Uri.parse('$baseUrl/cycles');
+      final headers = await _getHeaders(includeAuth: true);
+
+      final response = await http.post(
+        uri,
+        headers: headers,
+        body: jsonEncode(cycleData),
+      );
+
+      final responseData = jsonDecode(response.body);
+
+      // Status code 200 or 201 are both success codes
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        print('✅ Successfully added new cycle');
+        return responseData;
+      } else {
+        print('❌ Failed to add cycle: ${response.statusCode}');
+        print('Error response: $responseData');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Exception when adding cycle: $e');
+      return null;
     }
   }
 
@@ -1043,6 +1073,190 @@ class ApiService {
       print('❌ Delete doctor consultation error: $e');
       throw ApiException(
           message: 'Failed to delete consultation: ${e.toString()}');
+    }
+  }
+
+  // Get AI doctor consultations
+  static Future<Map<String, dynamic>?> getAIDoctorConsultations({
+    required String userId,
+  }) async {
+    try {
+      print('🔄 Getting AI doctor consultations for user: $userId');
+
+      final headers = await _getHeaders(includeAuth: true);
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/ai/doctor-consultations?userId=$userId'),
+            headers: headers,
+          )
+          .timeout(timeout);
+
+      print('📡 AI Doctor Consultations Response Status: ${response.statusCode}');
+      print('📡 AI Doctor Consultations Response: ${response.body}');
+
+      return await _handleResponse(response);
+    } on SocketException {
+      throw ApiException(message: 'No internet connection');
+    } on HttpException {
+      throw ApiException(message: 'Network error occurred');
+    } catch (e) {
+      print('❌ Get AI doctor consultations error: $e');
+      throw ApiException(
+          message: 'Failed to load AI consultations: ${e.toString()}');
+    }
+  }
+
+  // Create AI doctor consultation
+  static Future<Map<String, dynamic>?> createAIDoctorConsultation({
+    required String userId,
+    required String symptoms,
+    required int severity,
+    String? duration,
+    String? additionalNotes,
+  }) async {
+    try {
+      print('🔄 Creating AI doctor consultation for user: $userId');
+
+      final headers = await _getHeaders(includeAuth: true);
+      final body = json.encode({
+        'userId': userId,
+        'symptoms': symptoms,
+        'severity': severity,
+        if (duration != null) 'duration': duration,
+        if (additionalNotes != null) 'additionalNotes': additionalNotes,
+      });
+
+      print('📤 Create AI Doctor Consultation Body: $body');
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/ai/doctor-consultation'),
+            headers: headers,
+            body: body,
+          )
+          .timeout(timeout);
+
+      print(
+          '📡 Create AI Doctor Consultation Response Status: ${response.statusCode}');
+      print('📡 Create AI Doctor Consultation Response: ${response.body}');
+
+      return await _handleResponse(response);
+    } on SocketException {
+      throw ApiException(message: 'No internet connection');
+    } on HttpException {
+      throw ApiException(message: 'Network error occurred');
+    } catch (e) {
+      print('❌ Create AI doctor consultation error: $e');
+      throw ApiException(
+          message: 'Failed to create AI consultation: ${e.toString()}');
+    }
+  }
+
+  // Get user reports
+  static Future<Map<String, dynamic>?> getUserReports({
+    required String userId,
+  }) async {
+    try {
+      print('🔄 Getting reports for user: $userId');
+
+      final headers = await _getHeaders(includeAuth: true);
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/reports?userId=$userId'),
+            headers: headers,
+          )
+          .timeout(timeout);
+
+      print('📡 Reports Response Status: ${response.statusCode}');
+      print('📡 Reports Response: ${response.body}');
+
+      return await _handleResponse(response);
+    } on SocketException {
+      throw ApiException(message: 'No internet connection');
+    } on HttpException {
+      throw ApiException(message: 'Network error occurred');
+    } catch (e) {
+      print('❌ Get reports error: $e');
+      throw ApiException(message: 'Failed to load reports: ${e.toString()}');
+    }
+  }
+
+  // Create user report
+  static Future<Map<String, dynamic>?> createReport({
+    required Map<String, dynamic> reportData,
+  }) async {
+    try {
+      print('🔄 Creating new report');
+      print('📤 Report data: $reportData');
+
+      final headers = await _getHeaders(includeAuth: true);
+      final body = json.encode(reportData);
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/reports'),
+            headers: headers,
+            body: body,
+          )
+          .timeout(timeout);
+
+      print('📡 Create Report Response Status: ${response.statusCode}');
+      print('📡 Create Report Response: ${response.body}');
+
+      return await _handleResponse(response);
+    } on SocketException {
+      throw ApiException(message: 'No internet connection');
+    } on HttpException {
+      throw ApiException(message: 'Network error occurred');
+    } catch (e) {
+      print('❌ Create report error: $e');
+      throw ApiException(message: 'Failed to create report: ${e.toString()}');
+    }
+  }
+
+  // Get User Stats
+  static Future<Map<String, dynamic>?> getUserStats() async {
+    try {
+      final headers = await _getHeaders();
+
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/users/stats'),
+            headers: headers,
+          )
+          .timeout(timeout);
+
+      return await _handleResponse(response);
+    } on SocketException {
+      throw ApiException(message: 'No internet connection');
+    } on HttpException {
+      throw ApiException(message: 'Network error occurred');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(message: 'Failed to get user stats: ${e.toString()}');
+    }
+  }
+
+  // Get AI Dashboard Insights
+  static Future<Map<String, dynamic>?> getAIDashboardInsights() async {
+    try {
+      final headers = await _getHeaders();
+
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/ai/insights'),
+            headers: headers,
+          )
+          .timeout(timeout);
+
+      return await _handleResponse(response);
+    } on SocketException {
+      throw ApiException(message: 'No internet connection');
+    } on HttpException {
+      throw ApiException(message: 'Network error occurred');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(message: 'Failed to get AI insights: ${e.toString()}');
     }
   }
 

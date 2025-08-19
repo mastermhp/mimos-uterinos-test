@@ -25,20 +25,33 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
   final AIService _aiService = AIService();
   late TabController _tabController;
 
-  bool _isLoading = true;
+  bool _isLoading = false;
   Map<String, dynamic> _report = {};
   List<Map<String, dynamic>> _consultations = [];
+  List<Map<String, dynamic>> _aiConsultations = [];
+  
+  // Variables for AI consultation form
+  final _symptomsController = TextEditingController();
+  final _durationController = TextEditingController();
+  final _notesController = TextEditingController();
+  double _severity = 5.0;
+  
+  // Flag to show which view is active (AI or real doctor)
+  bool _showAiDoctorView = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadData();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _symptomsController.dispose();
+    _durationController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
@@ -54,10 +67,11 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
       final currentUser = authProvider.currentUser;
 
       if (userData != null && currentUser != null) {
-        // Load AI report and consultations in parallel
+        // Load AI report, consultations, and AI consultations in parallel
         await Future.wait([
           _loadAIReport(userData),
           _loadConsultations(currentUser.id),
+          _loadAIConsultations(currentUser.id),
         ]);
       }
     } catch (e) {
@@ -97,7 +111,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
         });
 
         print('✅ CONSULTATIONS LOADED SUCCESSFULLY!');
-        _displayConsultationsResponse(response);
+        print('📋 Found ${_consultations.length} doctor consultations');
       } else {
         print('❌ Failed to load consultations or no consultations exist');
         setState(() {
@@ -112,31 +126,101 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
     }
   }
 
-  void _displayConsultationsResponse(Map<String, dynamic> response) {
-    print('📋 Consultations Success Response:');
-    print('{');
-    print('  "success": ${response['success']},');
-    print('  "data": [');
+  Future<void> _loadAIConsultations(String userId) async {
+    try {
+      print('🔄 Loading AI consultations for user: $userId');
 
-    final data = response['data'] as List<dynamic>;
-    for (int i = 0; i < data.length; i++) {
-      final consultation = data[i];
-      print('    {');
-      print('      "id": "${consultation['id']}",');
-      print('      "userId": "${consultation['userId']}",');
-      print('      "doctorName": "${consultation['doctorName']}",');
-      print('      "type": "${consultation['type']}",');
-      print('      "scheduledDate": "${consultation['scheduledDate']}",');
-      print('      "duration": ${consultation['duration']},');
-      print('      "reason": "${consultation['reason']}",');
-      print('      "notes": "${consultation['notes']}",');
-      print('      "status": "${consultation['status']}",');
-      print('      "createdAt": "${consultation['createdAt']}",');
-      print('      "updatedAt": "${consultation['updatedAt']}"');
-      print('    }${i < data.length - 1 ? ',' : ''}');
+      final response = await ApiService.getAIDoctorConsultations(
+        userId: userId,
+      );
+
+      if (response != null && response['success'] == true) {
+        final data = response['data'] as List<dynamic>;
+
+        setState(() {
+          _aiConsultations = data.cast<Map<String, dynamic>>();
+        });
+
+        print('✅ AI CONSULTATIONS LOADED SUCCESSFULLY!');
+        print('📋 Found ${_aiConsultations.length} AI consultations');
+      } else {
+        print('❌ Failed to load AI consultations or none exist');
+        setState(() {
+          _aiConsultations = [];
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading AI consultations: $e');
+      setState(() {
+        _aiConsultations = [];
+      });
     }
-    print('  ]');
-    print('}');
+  }
+
+  Future<void> _createAIDoctorConsultation() async {
+    if (_symptomsController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please describe your symptoms')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUser;
+
+      if (currentUser == null) {
+        throw Exception('User not logged in');
+      }
+
+      final response = await ApiService.createAIDoctorConsultation(
+        userId: currentUser.id,
+        symptoms: _symptomsController.text.trim(),
+        severity: _severity.toInt(),
+        duration: _durationController.text.trim(),
+        additionalNotes: _notesController.text.trim(),
+      );
+
+      if (response != null && response['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('AI consultation completed successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Clear form fields
+        _symptomsController.clear();
+        _durationController.clear();
+        _notesController.clear();
+        setState(() {
+          _severity = 5.0;
+        });
+
+        // Reload AI consultations
+        await _loadAIConsultations(currentUser.id);
+        
+        // Switch to AI consultations history tab
+        _tabController.animateTo(2);
+      } else {
+        throw Exception(response?['message'] ?? 'Unknown error');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to get AI consultation: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _showAddConsultationDialog() async {
@@ -150,14 +234,14 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
     final TextEditingController notesController = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
     TimeOfDay selectedTime = TimeOfDay.now();
-    String selectedType = 'general';
+    String selectedType = 'virtual';
     int duration = 30;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Schedule Consultation'),
+          title: const Text('Book Real Doctor Consultation'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -177,13 +261,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                     border: OutlineInputBorder(),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'general', child: Text('General')),
-                    DropdownMenuItem(
-                        value: 'specialist', child: Text('Specialist')),
-                    DropdownMenuItem(
-                        value: 'followup', child: Text('Follow-up')),
-                    DropdownMenuItem(
-                        value: 'emergency', child: Text('Emergency')),
+                    DropdownMenuItem(value: 'virtual', child: Text('Virtual')),
+                    DropdownMenuItem(value: 'in-person', child: Text('In-Person')),
+                    DropdownMenuItem(value: 'phone', child: Text('Phone')),
                   ],
                   onChanged: (value) {
                     setState(() {
@@ -261,7 +341,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 TextField(
                   controller: reasonController,
                   decoration: const InputDecoration(
-                    labelText: 'Reason for consultation',
+                    labelText: 'Reason for Consultation',
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 2,
@@ -270,7 +350,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 TextField(
                   controller: notesController,
                   decoration: const InputDecoration(
-                    labelText: 'Additional notes',
+                    labelText: 'Additional Notes',
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
@@ -282,6 +362,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey[700],
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -330,7 +413,11 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                   );
                 }
               },
-              child: const Text('Schedule'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Book Appointment'),
             ),
           ],
         ),
@@ -342,7 +429,15 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDarkMode = themeProvider.isDarkMode;
-    final userData = Provider.of<UserDataProvider>(context).userData;
+    final userDataProvider = Provider.of<UserDataProvider>(context);
+    final userData = userDataProvider.userData;
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    // Check if we need to reload data when user data becomes available
+    if (userData != null && !_isLoading && _report.isEmpty) {
+      // Trigger data loading when user data is available but not yet loaded
+      Future.microtask(() => _loadData());
+    }
 
     return Theme(
       data: themeProvider.getTheme(),
@@ -359,8 +454,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
           bottom: TabBar(
             controller: _tabController,
             tabs: const [
-              Tab(text: 'AI Report', icon: Icon(Icons.psychology)),
-              Tab(text: 'Consultations', icon: Icon(Icons.calendar_month)),
+              Tab(text: 'Doctor Options', icon: Icon(Icons.health_and_safety)),
+              Tab(text: 'Doctor Appointments', icon: Icon(Icons.calendar_month)),
+              Tab(text: 'AI Consultations', icon: Icon(Icons.psychology)),
             ],
           ),
         ),
@@ -372,78 +468,597 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               )
             : userData == null
                 ? const Center(
-                    child: Text("No user data available"),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_off, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          "No user data available",
+                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          "Please complete your profile first",
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
                   )
                 : TabBarView(
                     controller: _tabController,
                     children: [
-                      _buildAIReportTab(userData, isDarkMode),
-                      _buildConsultationsTab(),
+                      _buildDoctorOptionsTab(),
+                      _buildDoctorAppointmentsTab(),
+                      _buildAIConsultationsTab(),
                     ],
                   ),
-        floatingActionButton: _tabController.index == 1
-            ? FloatingActionButton(
-                onPressed: _showAddConsultationDialog,
-                backgroundColor: AppColors.primary,
-                child: const Icon(Icons.add, color: Colors.white),
-              )
-            : null,
       ),
     );
   }
-
-  Widget _buildAIReportTab(UserData userData, bool isDarkMode) {
+  
+  Widget _buildDoctorOptionsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(userData),
-          const SizedBox(height: 24),
-          _buildSummaryCard(),
-          const SizedBox(height: 24),
-          _buildMedicationsCard(),
-          const SizedBox(height: 24),
-          _buildRecommendationsCard(),
-          const SizedBox(height: 32),
-          AnimatedGradientButton(
-            text: "Generate PDF Report",
-            onPressed: _generateAndSharePDF,
-            icon: Icons.picture_as_pdf,
-          ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
-              borderRadius: BorderRadius.circular(12),
+          // Doctor Options Card
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.info_outline,
-                  color: AppColors.primary,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Choose Consultation Type",
+                    style: TextStyles.heading4,
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _showAiDoctorView = true;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: _showAiDoctorView 
+                                  ? const Color(0xFFD4C1F9)  // Lighter purple when selected
+                                  : const Color(0xFFE3D5FA), // Light purple
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.psychology,
+                                  color: _showAiDoctorView ? Colors.deepPurple : Colors.purple,
+                                  size: 32,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  "AI Doctor",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: _showAiDoctorView ? Colors.deepPurple : Colors.purple[700],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "Get Prescription",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: _showAiDoctorView ? Colors.deepPurple : Colors.purple[700],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _showAiDoctorView = false;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: !_showAiDoctorView 
+                                  ? const Color(0xFFA7EED2)  // Lighter green when selected
+                                  : const Color(0xFFC7F5E4), // Light green
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.person,
+                                  color: !_showAiDoctorView ? Colors.green[700] : Colors.green,
+                                  size: 32,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  "Real Doctor",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: !_showAiDoctorView ? Colors.green[700] : Colors.green,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "Book Appointment",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: !_showAiDoctorView ? Colors.green[700] : Colors.green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ).animate().fadeIn(duration: 300.ms).slideY(begin: 20, end: 0),
+          
+          const SizedBox(height: 24),
+          
+          // Show either AI Doctor form or Real Doctor booking button
+          if (_showAiDoctorView)
+            _buildAIDoctorRequestForm()
+          else
+            _buildRealDoctorBookingSection(),
+          
+          const SizedBox(height: 24),
+          
+          // Previous consultations preview
+          if (_showAiDoctorView && _aiConsultations.isNotEmpty)
+            _buildPreviousAIPrescriptionsPreview()
+          else if (!_showAiDoctorView && _consultations.isNotEmpty)
+            _buildUpcomingAppointmentsPreview(),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildAIDoctorRequestForm() {
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "AI Prescription Request",
+              style: TextStyles.heading4,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Fill out your symptoms below and click \"Get AI Prescription\" to receive an instant analysis.",
+              style: TextStyles.body2,
+            ),
+            const SizedBox(height: 20),
+            
+            Text(
+              "Symptoms",
+              style: TextStyles.subtitle2,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _symptomsController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: "Describe your symptoms...",
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 12),
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            Text(
+              "Severity (1-10)",
+              style: TextStyles.subtitle2,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text("1", style: TextStyles.body2),
                 Expanded(
-                  child: Text(
-                    "This report is generated by AI and should be reviewed by a healthcare professional. It is not a substitute for professional medical advice.",
-                    style: TextStyles.caption.copyWith(
-                      color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
-                      fontStyle: FontStyle.italic,
+                  child: Slider(
+                    value: _severity,
+                    min: 1,
+                    max: 10,
+                    divisions: 9,
+                    label: _severity.round().toString(),
+                    activeColor: AppColors.primary,
+                    onChanged: (value) {
+                      setState(() {
+                        _severity = value;
+                      });
+                    },
+                  ),
+                ),
+                Text("10", style: TextStyles.body2),
+              ],
+            ),
+            Center(
+              child: Text(
+                "${_severity.toInt()}/10",
+                style: TextStyles.body2.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            Text(
+              "Duration",
+              style: TextStyles.subtitle2,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _durationController,
+              decoration: InputDecoration(
+                hintText: "e.g., 3 days, 1 week",
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            Text(
+              "Additional Notes",
+              style: TextStyles.subtitle2,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _notesController,
+              maxLines: 2,
+              decoration: InputDecoration(
+                hintText: "Any additional information...",
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 24),
+            Center(
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _createAIDoctorConsultation,
+                  icon: const Icon(Icons.psychology),
+                  label: const Text("Get AI Prescription"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.all(16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 300.ms, delay: 100.ms).slideY(begin: 20, end: 0);
+  }
+  
+  Widget _buildRealDoctorBookingSection() {
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Book a Real Doctor Appointment",
+              style: TextStyles.heading4,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Schedule a consultation with a healthcare professional for personalized care.",
+              style: TextStyles.body2,
+            ),
+            const SizedBox(height: 20),
+            
+            // Appointment features
+            Row(
+              children: [
+                _buildFeatureItem(Icons.videocam, "Virtual Consultations"),
+                const SizedBox(width: 16),
+                _buildFeatureItem(Icons.local_hospital, "In-Person Visits"),
               ],
             ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                _buildFeatureItem(Icons.security, "Secure & Private"),
+                const SizedBox(width: 16),
+                _buildFeatureItem(Icons.schedule, "Flexible Scheduling"),
+              ],
+            ),
+            
+            const SizedBox(height: 24),
+            Center(
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _showAddConsultationDialog,
+                  icon: const Icon(Icons.calendar_month),
+                  label: const Text("Book Appointment"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.all(16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 300.ms, delay: 100.ms).slideY(begin: 20, end: 0);
+  }
+  
+  Widget _buildFeatureItem(IconData icon, String text) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                text,
+                style: TextStyles.caption.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPreviousAIPrescriptionsPreview() {
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Previous AI Prescriptions",
+                  style: TextStyles.subtitle1.copyWith(fontWeight: FontWeight.bold),
+                ),
+                TextButton(
+                  onPressed: () {
+                    _tabController.animateTo(2);
+                  },
+                  child: const Text("See All"),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            
+            // Show latest 2 AI consultations
+            ..._aiConsultations
+                .take(2)
+                .map((consultation) => _buildAIConsultationPreviewItem(consultation)),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 300.ms, delay: 200.ms).slideY(begin: 20, end: 0);
+  }
+  
+  Widget _buildUpcomingAppointmentsPreview() {
+    // Filter to show only upcoming appointments
+    final upcomingAppointments = _consultations.where((c) {
+      final status = c['status'] as String? ?? 'scheduled';
+      final scheduledDate = DateTime.parse(c['scheduledDate']);
+      return status == 'scheduled' && scheduledDate.isAfter(DateTime.now());
+    }).toList();
+    
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Upcoming Appointments",
+                  style: TextStyles.subtitle1.copyWith(fontWeight: FontWeight.bold),
+                ),
+                TextButton(
+                  onPressed: () {
+                    _tabController.animateTo(1);
+                  },
+                  child: const Text("See All"),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            
+            if (upcomingAppointments.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    "No upcoming appointments",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              )
+            else
+              // Show latest 2 upcoming appointments
+              ...upcomingAppointments
+                  .take(2)
+                  .map((consultation) => _buildAppointmentPreviewItem(consultation)),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 300.ms, delay: 200.ms).slideY(begin: 20, end: 0);
+  }
+  
+  Widget _buildAIConsultationPreviewItem(Map<String, dynamic> consultation) {
+    final createdAt = DateTime.parse(consultation['createdAt']);
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.psychology, color: Colors.deepPurple, size: 16),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "AI Prescription",
+                    style: TextStyles.body2.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    DateFormat('MMM d, yyyy').format(createdAt),
+                    style: TextStyles.caption,
+                  ),
+                ],
+              ),
+              const Spacer(),
+              const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+            ],
           ),
-          const SizedBox(height: 24),
+          if (consultation['symptoms'] != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              "Symptoms: ${consultation['symptoms']}",
+              style: TextStyles.caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildAppointmentPreviewItem(Map<String, dynamic> consultation) {
+    final scheduledDate = DateTime.parse(consultation['scheduledDate']);
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.person, color: Colors.green, size: 16),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      consultation['doctorName'] ?? "Doctor",
+                      style: TextStyles.body2.copyWith(fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      "${DateFormat('MMM d, yyyy').format(scheduledDate)} at ${DateFormat('h:mm a').format(scheduledDate)}",
+                      style: TextStyles.caption,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+            ],
+          ),
+          if (consultation['type'] != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              "Type: ${_capitalizeFirst(consultation['type'])}",
+              style: TextStyles.caption,
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildConsultationsTab() {
+  Widget _buildDoctorAppointmentsTab() {
     return RefreshIndicator(
       onRefresh: () async {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -473,7 +1088,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Tap + to schedule your first consultation',
+                    'Book your first consultation',
                     style: TextStyle(
                       color: Colors.grey,
                     ),
@@ -483,10 +1098,104 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
             )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: _consultations.length,
+              itemCount: _consultations.length + 1, // +1 for the Add button
               itemBuilder: (context, index) {
-                final consultation = _consultations[index];
+                // Add button at the top
+                if (index == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
+                    child: ElevatedButton.icon(
+                      onPressed: _showAddConsultationDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text("Schedule New Consultation"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ).animate().fadeIn(duration: 300.ms).slideY(begin: -20, end: 0);
+                }
+                
+                final consultation = _consultations[index - 1];
                 return _buildConsultationCard(consultation);
+              },
+            ),
+    );
+  }
+  
+  Widget _buildAIConsultationsTab() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final currentUser = authProvider.currentUser;
+        if (currentUser != null) {
+          await _loadAIConsultations(currentUser.id);
+        }
+      },
+      child: _aiConsultations.isEmpty
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.psychology_outlined,
+                    size: 80,
+                    color: Colors.grey,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'No AI consultations yet',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Try getting your first AI prescription',
+                    style: TextStyle(
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _aiConsultations.length + 1, // +1 for the Add button
+              itemBuilder: (context, index) {
+                // Add button at the top
+                if (index == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        _tabController.animateTo(0); // Go to options tab
+                        setState(() {
+                          _showAiDoctorView = true; // Show AI doctor form
+                        });
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text("Get New AI Prescription"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ).animate().fadeIn(duration: 300.ms).slideY(begin: -20, end: 0);
+                }
+                
+                final consultation = _aiConsultations[index - 1];
+                return _buildAIConsultationCard(consultation);
               },
             ),
     );
@@ -554,13 +1263,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        (consultation['type'] ?? 'General')
-                            .toLowerCase()
-                            .split(' ')
-                            .map((word) => word.isEmpty
-                                ? word
-                                : word[0].toUpperCase() + word.substring(1))
-                            .join(' '),
+                        _capitalizeFirst(consultation['type'] ?? 'General'),
                         style: TextStyles.body2.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -719,6 +1422,223 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
     ).animate().fadeIn(duration: 600.ms).slideY(begin: 20, end: 0);
   }
 
+  Widget _buildAIConsultationCard(Map<String, dynamic> consultation) {
+    final createdAt = DateTime.parse(consultation['createdAt']);
+    final aiResponse = consultation['aiResponse'] as String? ?? '';
+    
+    // Extract sections from AI response
+    final sections = _extractAIResponseSections(aiResponse);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.psychology,
+                    color: Colors.deepPurple,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "AI Prescription",
+                        style: TextStyles.subtitle1.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        DateFormat('MMMM d, yyyy').format(createdAt),
+                        style: TextStyles.body2.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: Colors.green,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        "COMPLETED",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+            
+            // Symptoms and Severity
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Symptoms",
+                        style: TextStyles.body2.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        consultation['symptoms'] ?? 'Not specified',
+                        style: TextStyles.body2,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Severity",
+                      style: TextStyles.body2.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "${consultation['severity'] ?? 'N/A'}/10",
+                      style: TextStyles.body2.copyWith(
+                        color: _getSeverityColor(consultation['severity'] ?? 0),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            
+            // Duration
+            if (consultation['duration'] != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                "Duration",
+                style: TextStyles.body2.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                consultation['duration'],
+                style: TextStyles.body2,
+              ),
+            ],
+            
+            // Additional Notes
+            if (consultation['additionalNotes'] != null &&
+                consultation['additionalNotes'].toString().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                "Additional Notes",
+                style: TextStyles.body2.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                consultation['additionalNotes'],
+                style: TextStyles.body2,
+              ),
+            ],
+            
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            
+            // AI Response Sections
+            if (sections.isNotEmpty) ...[
+              Text(
+                "AI Analysis & Recommendations",
+                style: TextStyles.subtitle1.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              for (var entry in sections.entries) ...[
+                if (entry.value.isNotEmpty) ...[
+                  Text(
+                    entry.key,
+                    style: TextStyles.body2.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _getSectionColor(entry.key),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    entry.value,
+                    style: TextStyles.body2,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ],
+            ] else if (aiResponse.isNotEmpty) ...[
+              Text(
+                "AI Analysis",
+                style: TextStyles.subtitle1.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                aiResponse,
+                style: TextStyles.body2,
+              ),
+            ],
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 600.ms).slideY(begin: 20, end: 0);
+  }
+
   Future<void> _updateConsultationStatus(
       String consultationId, String status) async {
     try {
@@ -741,6 +1661,14 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
         if (currentUser != null) {
           await _loadConsultations(currentUser.id);
         }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Failed to update consultation: ${response?['error'] ?? 'Unknown error'}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -751,522 +1679,76 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
       );
     }
   }
-
-  Future<void> _generateAndSharePDF() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+  
+  Map<String, String> _extractAIResponseSections(String response) {
+    final Map<String, String> sections = {};
+    
     try {
-      final userData =
-          Provider.of<UserDataProvider>(context, listen: false).userData;
-      if (userData == null) {
-        setState(() {
-          _isLoading = false;
-        });
-        return;
+      final sectionNames = [
+        'MEDICAL ASSESSMENT', 
+        'DIAGNOSIS/IMPRESSION', 
+        'RECOMMENDATIONS', 
+        'PRESCRIPTION', 
+        'FOLLOW-UP'
+      ];
+      
+      for (int i = 0; i < sectionNames.length; i++) {
+        final currentSection = sectionNames[i];
+        final nextSection = i < sectionNames.length - 1 ? sectionNames[i + 1] : null;
+        
+        int startIndex = response.indexOf(currentSection);
+        if (startIndex != -1) {
+          startIndex += currentSection.length;
+          
+          int endIndex;
+          if (nextSection != null) {
+            endIndex = response.indexOf(nextSection, startIndex);
+            if (endIndex == -1) endIndex = response.length;
+          } else {
+            endIndex = response.length;
+          }
+          
+          String content = response.substring(startIndex, endIndex).trim();
+          // Remove any leading ":" or newlines
+          content = content.replaceFirst(RegExp(r'^[:\s\n]+'), '').trim();
+          
+          sections[currentSection] = content;
+        }
       }
-
-      // Show a message that PDF generation is not available in this version
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'PDF generation is not available in this version. Please install the pdf and share_plus packages.'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-
-      setState(() {
-        _isLoading = false;
-      });
     } catch (e) {
-      print('Error generating PDF: $e');
-      setState(() {
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to generate PDF. Please try again.'),
-        ),
-      );
+      print('Error parsing AI response: $e');
     }
+    
+    return sections;
   }
-
-  // ... existing methods like _buildHeader, _buildSummaryCard, etc. remain the same ...
-
-  Widget _buildHeader(UserData userData) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, Color(0xFFE899B8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.medical_information_outlined,
-                  color: Colors.white,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Medical Report",
-                      style: TextStyles.heading3.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      "For Dr. Review",
-                      style: TextStyles.body2.copyWith(
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Divider(
-            color: Colors.white24,
-            height: 1,
-          ),
-          const SizedBox(height: 20),
-          _buildPatientInfoRow("Name", userData.name),
-          const SizedBox(height: 8),
-          _buildPatientInfoRow("Age", "${userData.age} years"),
-          const SizedBox(height: 8),
-          _buildPatientInfoRow("Height", "${userData.height} cm"),
-          const SizedBox(height: 8),
-          _buildPatientInfoRow("Weight", "${userData.weight} kg"),
-          const SizedBox(height: 8),
-          _buildPatientInfoRow("Cycle Length", "${userData.cycleLength} days"),
-          const SizedBox(height: 8),
-          _buildPatientInfoRow(
-              "Period Length", "${userData.periodLength} days"),
-          const SizedBox(height: 8),
-          _buildPatientInfoRow(
-            "Last Period",
-            userData.lastPeriodDate.toString().split(' ')[0],
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 600.ms).slideY(begin: 20, end: 0);
+  
+  Color _getSeverityColor(int severity) {
+    if (severity <= 3) return Colors.green;
+    if (severity <= 6) return Colors.orange;
+    return Colors.red;
   }
-
-  Widget _buildPatientInfoRow(String label, String value) {
-    return Row(
-      children: [
-        Text(
-          "$label: ",
-          style: TextStyles.body2.copyWith(
-            color: Colors.white.withOpacity(0.8),
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyles.body2.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSummaryCard() {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final isDarkMode = themeProvider.isDarkMode;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.summarize_outlined,
-                  color: AppColors.primary,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                "Summary",
-                style: TextStyles.subtitle1.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _report['summary'] ?? 'No summary available.',
-            style: TextStyles.body2,
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDarkMode ? Colors.grey[800] : Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.calendar_today_outlined,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Next Period Expected",
-                        style: TextStyles.body2.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _report['nextPeriodStart'] != null
-                            ? DateTime.parse(_report['nextPeriodStart'])
-                                .toString()
-                                .split(' ')[0]
-                            : 'Not available',
-                        style: TextStyles.body2.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    )
-        .animate()
-        .fadeIn(delay: 200.ms, duration: 600.ms)
-        .slideY(delay: 200.ms, begin: 20, end: 0);
-  }
-
-  Widget _buildMedicationsCard() {
-    final medications = _report['medications'] as List<dynamic>? ?? [];
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.secondary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.medication_outlined,
-                  color: AppColors.secondary,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                "Medications",
-                style: TextStyles.subtitle1.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (medications.isNotEmpty)
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: medications.length,
-              separatorBuilder: (context, index) => const Divider(height: 24),
-              itemBuilder: (context, index) {
-                final medication = medications[index];
-                return Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.secondary.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.medication_liquid_outlined,
-                        color: AppColors.secondary,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            medication['name'] ?? '',
-                            style: TextStyles.body1.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "${medication['dosage'] ?? ''} - ${medication['days'] ?? ''} days",
-                            style: TextStyles.body2.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
-            )
-          else
-            Text(
-              "No medications recommended.",
-              style: TextStyles.body2,
-            ),
-          const SizedBox(height: 16),
-          Text(
-            _report['medicationNotes'] ?? '',
-            style: TextStyles.body2.copyWith(
-              fontStyle: FontStyle.italic,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    )
-        .animate()
-        .fadeIn(delay: 400.ms, duration: 600.ms)
-        .slideY(delay: 400.ms, begin: 20, end: 0);
-  }
-
-  Widget _buildRecommendationsCard() {
-    final recommendations = _report['recommendations'] as List<dynamic>? ?? [];
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.recommend_outlined,
-                  color: AppColors.accent,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                "Recommendations",
-                style: TextStyles.subtitle1.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (recommendations.isNotEmpty)
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: recommendations.length,
-              separatorBuilder: (context, index) => const Divider(height: 24),
-              itemBuilder: (context, index) {
-                final recommendation = recommendations[index];
-                final IconData icon = _getRecommendationIcon(
-                    recommendation['type'] as String? ?? 'general');
-                final Color color = _getRecommendationColor(
-                    recommendation['type'] as String? ?? 'general');
-
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        icon,
-                        color: color,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            recommendation['title'] ?? '',
-                            style: TextStyles.body1.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            recommendation['description'] ?? '',
-                            style: TextStyles.body2,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
-            )
-          else
-            Text(
-              "No recommendations available.",
-              style: TextStyles.body2,
-            ),
-        ],
-      ),
-    )
-        .animate()
-        .fadeIn(delay: 600.ms, duration: 600.ms)
-        .slideY(delay: 600.ms, begin: 20, end: 0);
-  }
-
-  IconData _getRecommendationIcon(String type) {
-    switch (type.toLowerCase()) {
-      case 'hydration':
-        return Icons.water_drop_outlined;
-      case 'nutrition':
-        return Icons.restaurant_outlined;
-      case 'exercise':
-        return Icons.fitness_center_outlined;
-      case 'sleep':
-        return Icons.bedtime_outlined;
-      case 'medication':
-        return Icons.medication_outlined;
-      case 'stress':
-        return Icons.spa_outlined;
-      default:
-        return Icons.recommend_outlined;
-    }
-  }
-
-  Color _getRecommendationColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'hydration':
+  
+  Color _getSectionColor(String section) {
+    switch (section) {
+      case 'MEDICAL ASSESSMENT':
         return Colors.blue;
-      case 'nutrition':
-        return Colors.green;
-      case 'exercise':
-        return Colors.orange;
-      case 'sleep':
-        return Colors.indigo;
-      case 'medication':
+      case 'DIAGNOSIS/IMPRESSION':
         return Colors.purple;
-      case 'stress':
+      case 'RECOMMENDATIONS':
         return Colors.teal;
+      case 'PRESCRIPTION':
+        return Colors.orange;
+      case 'FOLLOW-UP':
+        return Colors.indigo;
       default:
-        return AppColors.accent;
+        return Colors.black;
     }
+  }
+  
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text.toLowerCase().split(' ').map((word) => 
+      word.isEmpty ? word : word[0].toUpperCase() + word.substring(1)
+    ).join(' ');
   }
 }

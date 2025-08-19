@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:menstrual_health_ai/models/user_data.dart';
+import 'package:menstrual_health_ai/services/api_service.dart'; // Add this import
 
 class AIService {
   static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
@@ -1007,5 +1008,136 @@ This data will be used to display information in the app.
     result['medicationNotes'] = 'These medications may help manage menstrual pain and discomfort. Always consult with your healthcare provider before starting any new medication.';
     
     return result;
+  }
+
+  Future<Map<String, dynamic>> generateDashboardInsights({
+    required UserData userData,
+    required String userId,
+  }) async {
+    try {
+      print('🔄 Generating AI dashboard insights for user: $userId');
+      
+      // Get cycle data for context
+      final cyclesResponse = await ApiService.getCycles(
+        userId: userId,
+      );
+      
+      final List<Map<String, dynamic>> cycleData = [];
+      if (cyclesResponse != null && 
+          cyclesResponse['success'] == true && 
+          cyclesResponse['data'] != null) {
+        final cycles = cyclesResponse['data'] as List;
+        for (var cycle in cycles) {
+          cycleData.add(cycle as Map<String, dynamic>);
+        }
+      }
+      
+      // Get symptom data for context
+      final symptomsResponse = await ApiService.getSymptomLogs(
+        userId: userId,
+      );
+      
+      final List<Map<String, dynamic>> symptomData = [];
+      if (symptomsResponse != null && 
+          symptomsResponse['success'] == true && 
+          symptomsResponse['data'] != null) {
+        final symptoms = symptomsResponse['data'] as List;
+        for (var symptom in symptoms) {
+          symptomData.add(symptom as Map<String, dynamic>);
+        }
+      }
+      
+      // Create insights based on cycle and symptom data
+      final Map<String, dynamic> insights = {
+        'message': _generateInsightMessage(userData, cycleData, symptomData),
+        'recommendations': _generateRecommendations(userData, cycleData, symptomData),
+      };
+      
+      print('✅ AI dashboard insights generated successfully');
+      return insights;
+    } catch (e) {
+      print('❌ Error generating AI dashboard insights: $e');
+      return {
+        'message': 'Could not generate insights at this time.',
+        'recommendations': [
+          'Track your symptoms regularly',
+          'Stay hydrated throughout the day',
+          'Consider a balanced diet',
+          'Get adequate sleep'
+        ],
+      };
+    }
+  }
+
+  String _generateInsightMessage(
+    UserData userData, 
+    List<Map<String, dynamic>> cycles,
+    List<Map<String, dynamic>> symptoms
+  ) {
+    // Default message if we don't have enough data
+    if (cycles.isEmpty) {
+      return "Start tracking your periods to receive personalized insights. The more data you provide, the more accurate your insights will become.";
+    }
+    
+    try {
+      // Calculate current cycle day
+      final today = DateTime.now();
+      final lastPeriodDate = userData.lastPeriodDate;
+      final daysSinceLastPeriod = today.difference(lastPeriodDate).inDays;
+      final cycleDay = ((daysSinceLastPeriod % userData.cycleLength) + 1).toInt();
+      
+      // Generate appropriate message based on cycle day
+      if (cycleDay <= userData.periodLength) {
+        return "You're currently on day $cycleDay of your period. Remember to stay hydrated and get plenty of rest. Iron-rich foods can help with energy levels during menstruation.";
+      } else if (cycleDay >= userData.cycleLength - 7) {
+        return "You're in the premenstrual phase of your cycle. You may experience PMS symptoms like mood changes, bloating, or fatigue. Self-care is especially important now.";
+      } else if (cycleDay >= userData.cycleLength / 2 - 2 && cycleDay <= userData.cycleLength / 2 + 2) {
+        return "You may be near your ovulation phase. Some people experience slight pain, increased energy or changes in cervical fluid. Track your symptoms to better understand your patterns.";
+      } else {
+        return "You're currently on day $cycleDay of your ${userData.cycleLength}-day cycle. Understanding your cycle patterns can help you better predict symptoms and prepare for upcoming phases.";
+      }
+    } catch (e) {
+      return "Keep tracking your cycle for personalized insights. Each entry helps our AI understand your unique patterns better.";
+    }
+  }
+
+  List<String> _generateRecommendations(
+    UserData userData, 
+    List<Map<String, dynamic>> cycles,
+    List<Map<String, dynamic>> symptoms
+  ) {
+    // Default recommendations
+    List<String> recommendations = [
+      "Track your symptoms daily for more personalized insights",
+      "Stay hydrated by drinking at least 8 glasses of water daily",
+      "Aim for 7-9 hours of quality sleep each night",
+      "Include more iron-rich foods in your diet during your period"
+    ];
+    
+    // Add personalized recommendations based on available data
+    if (cycles.isNotEmpty) {
+      // Calculate current cycle day
+      final today = DateTime.now();
+      final lastPeriodDate = userData.lastPeriodDate;
+      final daysSinceLastPeriod = today.difference(lastPeriodDate).inDays;
+      final cycleDay = ((daysSinceLastPeriod % userData.cycleLength) + 1).toInt();
+      
+      if (cycleDay <= userData.periodLength) {
+        // During period
+        recommendations.add("Consider taking a warm bath to alleviate menstrual cramps");
+        recommendations.add("Gentle exercises like yoga can help reduce period pain");
+      } else if (cycleDay >= userData.cycleLength - 7) {
+        // Premenstrual phase
+        recommendations.add("Limiting salt, caffeine, and sugar may help reduce PMS symptoms");
+        recommendations.add("Practice stress-reduction techniques like meditation or deep breathing");
+      }
+    }
+    
+    // Look for patterns in symptoms if available
+    if (symptoms.isNotEmpty && symptoms.length > 3) {
+      recommendations.add("Consider keeping a symptom journal to identify patterns and triggers");
+    }
+    
+    return recommendations;
   }
 }

@@ -104,28 +104,20 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
 
     try {
       // Get user data from provider
-      final userData =
-          Provider.of<UserDataProvider>(context, listen: false).userData;
+      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      final userData = userDataProvider.userData;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUser;
 
-      if (userData == null || currentUser == null) {
-        throw Exception("User data not available");
-      }
-
-      // Calculate current cycle day
-      final today = DateTime.now();
-      final daysSinceLastPeriod =
-          today.difference(userData.lastPeriodDate).inDays;
-      final cycleDay = (daysSinceLastPeriod % userData.cycleLength) + 1;
-
-      // Convert symptoms map to list for the AI service
+      print('📊 Checking user data: ${userData != null ? "Available" : "NULL"}');
+      print('📊 Checking current user: ${currentUser != null ? "Available" : "NULL"}');
+      
+      // Create a list of symptoms for analysis
       final List<String> symptomsList = _symptoms.entries
           .where((entry) => entry.value)
           .map((entry) => entry.key)
           .toList();
-
-      // Add pain, mood, and energy levels if they're set
+      
       if (_painLevel > 0) {
         symptomsList.add("Pain Level: $_painLevel/10");
       }
@@ -136,117 +128,192 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
         symptomsList.add("Energy Level: $_energyLevel/10");
       }
 
-      // Prepare symptoms data for API
-      final List<Map<String, dynamic>> apiSymptoms = _symptoms.entries
-          .where((entry) => entry.value)
-          .map((entry) => {
-                'type': entry.key.toLowerCase().replaceAll(' ', '_'),
-                'severity': _getSeverityFromPainLevel(_painLevel),
-                'notes': '',
-              })
-          .toList();
-
-      // Add level-based symptoms
-      if (_painLevel > 0) {
-        apiSymptoms.add({
-          'type': 'pain',
-          'severity': _getSeverityFromLevel(_painLevel),
-          'notes': 'Pain level: $_painLevel/10',
-        });
-      }
-
-      // Save symptoms to backend first
-      try {
-        print('🔄 Attempting to save symptoms to backend...');
-        print('📤 User ID: ${currentUser.id}');
-        print('📤 Date: ${DateFormat('yyyy-MM-dd').format(_selectedDate)}');
-        print('📤 Symptoms: $apiSymptoms');
-        print('📤 Flow: ${_getFlowLevel()}');
-        print('📤 Mood: ${_getMoodFromLevel(_moodLevel)}');
-
-        final response = await ApiService.createSymptomLog(
-          userId: currentUser.id,
-          date: DateFormat('yyyy-MM-dd').format(_selectedDate),
-          symptoms: apiSymptoms,
-          flow: _getFlowLevel(),
-          mood: _getMoodFromLevel(_moodLevel),
-          temperature: null,
-          notes: 'Generated from symptom analysis',
-        );
-
-        if (response != null && response['success'] == true) {
-          print('✅ SYMPTOMS SAVED SUCCESSFULLY!');
-          print('📋 Success Response:');
-          print('{');
-          print('  "success": ${response['success']},');
-          print(
-              '  "message": "${response['message'] ?? 'Symptom log created successfully'}",');
-          print('  "data": {');
-          if (response['data'] != null) {
-            final data = response['data'];
-            print('    "id": "${data['id'] ?? 'N/A'}",');
-            print('    "userId": "${data['userId'] ?? currentUser.id}",');
-            print(
-                '    "date": "${data['date'] ?? DateFormat('yyyy-MM-dd').format(_selectedDate)}",');
-            print('    "symptoms": ${data['symptoms'] ?? apiSymptoms},');
-            print('    "flow": "${data['flow'] ?? _getFlowLevel()}",');
-            print(
-                '    "mood": "${data['mood'] ?? _getMoodFromLevel(_moodLevel)}",');
-            print('    "temperature": ${data['temperature'] ?? 'null'},');
-            print(
-                '    "notes": "${data['notes'] ?? 'Generated from symptom analysis'}",');
-            print(
-                '    "createdAt": "${data['createdAt'] ?? DateTime.now().toIso8601String()}",');
-            print(
-                '    "updatedAt": "${data['updatedAt'] ?? DateTime.now().toIso8601String()}"');
-          }
-          print('  }');
-          print('}');
-
-          // Show success snackbar
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Symptoms saved to backend successfully!'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
+      // Try multiple approaches to get user data
+      if (userData == null || currentUser == null) {
+        print('⚠️ Using fallback approach for analysis with cycle data...');
+        
+        try {
+          // Try to get cycles data for the user
+          final cyclesResponse = await ApiService.getCycles(
+            userId: currentUser?.id ?? '',
           );
-        } else {
-          print('⚠️ Backend save failed or returned unsuccessful response');
-          print('📋 Response: $response');
+          
+          if (cyclesResponse != null && 
+              cyclesResponse['success'] == true && 
+              cyclesResponse['data'] != null) {
+            
+            final cyclesData = cyclesResponse['data'] as List<dynamic>;
+            print('✅ Successfully fetched ${cyclesData.length} cycles from API');
+            
+            if (cyclesData.isNotEmpty) {
+              // Use the most recent cycle data
+              final mostRecentCycle = cyclesData.first;
+              
+              print('📊 Using cycle data: ${mostRecentCycle['id']}');
+              print('📊 Start date: ${mostRecentCycle['startDate']}');
+              print('📊 Cycle length: ${mostRecentCycle['cycleLength']}');
+              
+              // Create a UserData object from cycle data
+              final tempUserData = UserData(
+                id: mostRecentCycle['userId'] ?? 'default_id',
+                name: 'User',
+                email: currentUser?.email ?? '',
+                age: 30,
+                cyclesTracked: cyclesData.length,
+                birthDate: DateTime.now().subtract(const Duration(days: 365 * 30)), // Default to 30 years ago
+                lastPeriodDate: DateTime.parse(mostRecentCycle['startDate']),
+                cycleLength: mostRecentCycle['cycleLength'] ?? 28,
+                periodLength: mostRecentCycle['periodLength'] ?? 5,
+                height: 165,
+                weight: 60,
+                healthConditions: [],
+                symptoms: [],
+                moods: [],
+                notes: [],
+                isPremium: false,
+                profileImageUrl: null,
+                periodHistory: [],
+                notificationSettings: {},
+                language: 'en',
+                medications: [],
+                exercises: [],
+                nutritionLogs: [],
+                sleepLogs: [],
+                waterIntake: [],
+                goals: [],
+                preferences: {},
+              );
+              
+              // Calculate current cycle day based on most recent period
+              final today = DateTime.now();
+              final lastPeriodDate = DateTime.parse(mostRecentCycle['startDate']);
+              final daysSinceLastPeriod = today.difference(lastPeriodDate).inDays;
+              final cycleDay = ((daysSinceLastPeriod % (mostRecentCycle['cycleLength'] ?? 28)) + 1).toInt();
+              
+              print('📊 Calculated cycle day: $cycleDay');
+              print('🤖 Starting AI analysis with cycle data...');
+              
+              // Call AI service with the constructed UserData
+              final analysisData = await _aiService.analyzeSymptoms(
+                symptomsList, 
+                cycleDay, 
+                tempUserData
+              );
+              
+              setState(() {
+                _aiAnalysisData = analysisData;
+                _aiAnalysis = analysisData['analysis'] ?? 'Analysis based on your cycle history.';
+                _showAnalysis = true;
+                _isLoading = false;
+              });
+              
+              print('✅ AI analysis completed successfully with cycle data');
+              return;
+            }
+          } else {
+            print('❌ Failed to get cycles or no cycles available');
+          }
+          
+          // If we couldn't get cycle data, continue with basic fallback
+          print('⚠️ Using basic fallback approach...');
+          
+          // Create a minimal UserData object with reasonable defaults
+          final fallbackUserData = UserData(
+            id: currentUser?.id ?? 'fallback_id',
+            name: currentUser?.name ?? 'User',
+            email: currentUser?.email ?? '',
+            age: 30,
+            cyclesTracked: 0,
+            birthDate: DateTime.now().subtract(const Duration(days: 365 * 30)),
+            lastPeriodDate: DateTime.now().subtract(const Duration(days: 14)),
+            cycleLength: 28,
+            periodLength: 5,
+            height: 165,
+            weight: 60,
+            healthConditions: [],
+            symptoms: [],
+            moods: [],
+            notes: [],
+            isPremium: false,
+            profileImageUrl: null,
+            periodHistory: [],
+            notificationSettings: {},
+            language: 'en',
+            medications: [],
+            exercises: [],
+            nutritionLogs: [],
+            sleepLogs: [],
+            waterIntake: [],
+            goals: [],
+            preferences: {},
+          );
+          
+          final analysisData = await _aiService.analyzeSymptoms(
+            symptomsList, 
+            14, // Assume mid-cycle as fallback
+            fallbackUserData
+          );
+          
+          setState(() {
+            _aiAnalysisData = analysisData;
+            _aiAnalysis = analysisData['analysis'] ?? 'Analysis based on limited data. For more accurate results, please update your profile.';
+            _showAnalysis = true;
+            _isLoading = false;
+          });
+          
+          print('✅ AI analysis completed with fallback data');
+        } catch (fallbackError) {
+          print('❌ Fallback approach failed: $fallbackError');
+          throw Exception("Unable to analyze symptoms. Please ensure your profile is complete.");
         }
-      } catch (e) {
-        print('❌ Failed to save symptoms to backend: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save to backend: $e'),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        // Continue with AI analysis even if backend save fails
+      } else {
+        // Use actual user data
+        final today = DateTime.now();
+        final daysSinceLastPeriod = today.difference(userData.lastPeriodDate).inDays;
+        final cycleDay = ((daysSinceLastPeriod % userData.cycleLength) + 1).toInt();
+
+        print('📊 User data available: ${userData.name}, age: ${userData.age}');
+        print('📊 Last period date: ${userData.lastPeriodDate}');
+        print('📊 Cycle length: ${userData.cycleLength}');
+        print('📊 Current cycle day: $cycleDay');
+
+        final analysisData = await _aiService.analyzeSymptoms(symptomsList, cycleDay, userData);
+
+        setState(() {
+          _aiAnalysisData = analysisData;
+          _aiAnalysis = analysisData['analysis'] ?? 'No analysis available';
+          _showAnalysis = true;
+          _isLoading = false;
+        });
+
+        print('✅ AI analysis completed successfully with user data');
       }
-
-      // Call the AI service with the instance method
-      print('🤖 Starting AI analysis...');
-      final analysisData =
-          await _aiService.analyzeSymptoms(symptomsList, cycleDay, userData);
-
-      setState(() {
-        _aiAnalysisData = analysisData;
-        _aiAnalysis = analysisData['analysis'] ?? 'No analysis available';
-        _showAnalysis = true;
-        _isLoading = false;
-      });
-
-      print('✅ AI analysis completed successfully');
     } catch (e) {
       print('❌ Overall analysis failed: $e');
       setState(() {
         _isLoading = false;
-        _aiAnalysis = 'Failed to analyze symptoms: $e. Please try again later.';
+        _aiAnalysis = 'We encountered an issue while analyzing your symptoms. Here are some general insights about your symptoms, though they may not be personalized to your cycle.';
         _showAnalysis = true;
       });
+      
+      // Create some generic analysis as fallback
+      _aiAnalysisData = {
+        'analysis': 'The symptoms you\'ve logged are common during menstrual cycles. If you experience severe pain, consider consulting a healthcare provider.',
+        'recommendations': [
+          'Stay hydrated and maintain a balanced diet',
+          'Light exercise like walking can help alleviate some symptoms',
+          'Consider over-the-counter pain relief if needed',
+          'Ensure you\'re getting enough rest'
+        ]
+      };
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not generate personalized analysis: ${e.toString()}'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -686,34 +753,124 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
               child: AnimatedGradientButton(
                 text: 'Save to Journal',
                 onPressed: () async {
-                  print('✅ SYMPTOM LOG SAVED TO JOURNAL SUCCESSFULLY!');
-                  print('📋 Journal Save Confirmation:');
-                  print('{');
-                  print('  "success": true,');
-                  print(
-                      '  "message": "Symptom log saved to journal successfully",');
-                  print('  "action": "journal_save",');
-                  print(
-                      '  "timestamp": "${DateTime.now().toIso8601String()}",');
-                  print(
-                      '  "symptoms_count": ${_symptoms.values.where((v) => v).length},');
-                  print('  "pain_level": $_painLevel,');
-                  print('  "mood_level": $_moodLevel,');
-                  print('  "energy_level": $_energyLevel');
-                  print('}');
+                  try {
+                    // Show loading indicator
+                    setState(() {
+                      _isLoading = true;
+                    });
+                    
+                    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                    final currentUser = authProvider.currentUser;
+                    
+                    if (currentUser == null) {
+                      throw Exception("User not logged in");
+                    }
+                    
+                    // Format date as required by API (YYYY-MM-DD)
+                    final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
+                    
+                    // Prepare detailed symptoms with severity for API
+                    final List<Map<String, dynamic>> apiSymptoms = _symptoms.entries
+                        .where((entry) => entry.value)
+                        .map((entry) => {
+                              'type': entry.key.toLowerCase().replaceAll(' ', '_'),
+                              'severity': _getSeverityFromPainLevel(_painLevel),
+                              'notes': '',
+                            })
+                        .toList();
+                    
+                    // Add level-based symptoms
+                    if (_painLevel > 0) {
+                      apiSymptoms.add({
+                        'type': 'pain',
+                        'severity': _getSeverityFromLevel(_painLevel),
+                        'notes': 'Pain level: $_painLevel/10',
+                      });
+                    }
 
-                  // Show success message
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content:
-                          Text('Symptoms saved to your journal successfully!'),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                    if (_energyLevel > 0) {
+                      apiSymptoms.add({
+                        'type': 'energy',
+                        'severity': _getSeverityFromLevel(_energyLevel),
+                        'notes': 'Energy level: $_energyLevel/10',
+                      });
+                    }
+                    
+                    if (_moodLevel > 0) {
+                      apiSymptoms.add({
+                        'type': 'mood',
+                        'severity': _getSeverityFromLevel(_moodLevel),
+                        'notes': 'Mood level: $_moodLevel/10',
+                      });
+                    }
+                    
+                    print('🔄 Saving symptoms to journal/backend...');
+                    print('📤 User ID: ${currentUser.id}');
+                    print('📤 Date: $formattedDate');
+                    print('📤 Symptoms: $apiSymptoms');
+                    print('📤 Flow: ${_getFlowLevel()}');
+                    print('📤 Mood: ${_getMoodFromLevel(_moodLevel)}');
+                    
+                    // Call the API service to create symptom log
+                    final response = await ApiService.createSymptomLog(
+                      userId: currentUser.id,
+                      date: formattedDate,
+                      symptoms: apiSymptoms,
+                      flow: _getFlowLevel(),
+                      mood: _getMoodFromLevel(_moodLevel),
+                      temperature: null,
+                      notes: _aiAnalysis.isNotEmpty ? 'Based on AI analysis: $_aiAnalysis' : 'Logged symptoms',
+                    );
+                    
+                    if (response != null && response['success'] == true) {
+                      print('✅ SYMPTOM LOG SAVED TO JOURNAL SUCCESSFULLY!');
+                      print('📋 Journal Save Confirmation:');
+                      print('  "success": true,');
+                      print('  "message": "Symptom log saved to journal successfully",');
+                      print('  "data": ${response['data']}');
+                      print('  "timestamp": "${DateTime.now().toIso8601String()}",');
+                      print('  "symptoms_count": ${_symptoms.values.where((v) => v).length},');
+                      print('  "pain_level": $_painLevel,');
+                      print('  "mood_level": $_moodLevel,');
+                      print('  "energy_level": $_energyLevel');
 
-                  // Navigate back
-                  Navigator.pop(context);
+                      // Show success message
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Symptoms saved to your journal successfully!'),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+
+                      // Navigate back
+                      Navigator.pop(context, true);
+                    } else {
+                      print('❌ Failed to save symptoms to journal: ${response?['message'] ?? 'Unknown error'}');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to save symptoms: ${response?['message'] ?? 'Unknown error'}'),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    }
+                  } catch (e) {
+                    print('❌ Exception while saving symptoms: $e');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error: $e'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                    setState(() {
+                      _isLoading = false;
+                    });
+                  }
                 },
                 width: double.infinity,
                 height: 56,
@@ -721,6 +878,7 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                   AppColors.primary,
                   AppColors.secondary,
                 ],
+                isLoading: _isLoading,
                 icon: Icons.check,
               ),
             ),

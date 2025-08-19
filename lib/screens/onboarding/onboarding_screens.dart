@@ -5,13 +5,19 @@ import 'package:menstrual_health_ai/constants/app_colors.dart';
 import 'package:menstrual_health_ai/providers/auth_provider.dart';
 import 'package:menstrual_health_ai/providers/user_data_provider.dart';
 import 'package:menstrual_health_ai/screens/dashboard/bottom_nav.dart';
+import 'package:menstrual_health_ai/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:menstrual_health_ai/services/auth_service.dart';
 
 class OnboardingScreens extends StatefulWidget {
-  const OnboardingScreens({super.key});
+  final String? userName;
+
+  const OnboardingScreens({
+    super.key,
+    this.userName,
+  });
 
   @override
   State<OnboardingScreens> createState() => _OnboardingScreensState();
@@ -20,7 +26,7 @@ class OnboardingScreens extends StatefulWidget {
 class _OnboardingScreensState extends State<OnboardingScreens> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  final int _totalPages = 9; // Increased total pages to include age screen
+  final int _totalPages = 11; // Updated total pages to include all screens
 
   // User data
   String _name = "";
@@ -71,10 +77,15 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
   @override
   void initState() {
     super.initState();
+
+    // Initialize name from registration if available
+    if (widget.userName != null && widget.userName!.isNotEmpty) {
+      _name = widget.userName!;
+    }
+
     // Add listener to detect when we reach the loading page
     _pageController.addListener(() {
-      if (_pageController.page == 8 && !_isLoading) {
-        // Updated for new page count
+      if (_pageController.page == 10 && !_isLoading) {
         setState(() {
           _isLoading = true;
         });
@@ -118,11 +129,20 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
+      // Validate required data
+      if (_name.isEmpty) {
+        throw Exception('Name is required');
+      }
+
+      if (_lastPeriodDate == null) {
+        throw Exception('Last period date is required');
+      }
+
       // Convert selected symptoms and moods to the required format
       final List<Map<String, dynamic>> symptoms = _selectedSymptoms
           .map((symptom) => {
                 'name': symptom.toLowerCase().replaceAll(' ', '_'),
-                'intensity': 1,
+                'intensity': 3, // Default intensity
                 'date': DateTime.now().toIso8601String(),
               })
           .toList();
@@ -130,7 +150,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
       final List<Map<String, dynamic>> moods = _selectedMoods
           .map((mood) => {
                 'name': mood.toLowerCase(),
-                'intensity': 1,
+                'intensity': 3, // Default intensity
                 'date': DateTime.now().toIso8601String(),
               })
           .toList();
@@ -152,6 +172,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
       print(
           '🩸 Period Length: $_periodLength days, Cycle Length: $avgCycleLength days');
       print('📊 Regular Cycle: $_isRegularCycle');
+      print('📆 Last Period Date: ${_lastPeriodDate.toIso8601String()}');
       print('😊 Selected Moods: $_selectedMoods');
       print('🤕 Selected Symptoms: $_selectedSymptoms');
 
@@ -166,15 +187,38 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
         isRegularCycle: _isRegularCycle,
         cycleLength: avgCycleLength,
         lastPeriodDate: _lastPeriodDate,
+        initialPeriodDate: _lastPeriodDate, // Adding initialPeriodDate field
         goals: ['track_cycle'], // Convert to API format
         email: authProvider.currentUser?.email ?? '',
         healthConditions: [], // Add health conditions if needed
         symptoms: symptoms,
         moods: moods,
+        painLevel: _painLevel,
+        energyLevel: _energyLevel,
+        sleepQuality: _sleepQuality,
         notes: 'Onboarding completed via mobile app',
       );
 
       if (success) {
+        // After successful onboarding, set the period date
+        final userId = authProvider.currentUser?.id;
+        if (userId != null) {
+          print('📅 Setting period date for user: $userId');
+
+          // Create a new cycle with the period information
+          await ApiService.createCycle(
+            userId: userId,
+            startDate: _lastPeriodDate.toIso8601String(),
+            periodLength: _periodLength,
+            cycleLength: avgCycleLength,
+            flow: 'medium', // Default flow
+            symptoms: symptoms,
+            notes: 'Initial period from onboarding',
+          );
+
+          print('✅ Period date set successfully!');
+        }
+
         // Mark onboarding as completed locally
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('hasCompletedOnboarding', true);
@@ -303,12 +347,13 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                 },
                 children: [
                   _buildNamePage(),
-                  _buildAgePage(), // New age input page
+                  _buildAgePage(),
                   _buildBirthdayPage(),
                   _buildWeightPage(),
                   _buildHeightPage(),
                   _buildPeriodLengthPage(),
                   _buildCycleLengthPage(),
+                  _buildLastPeriodPage(), // Make sure this is included
                   _buildSymptomsAndMoodPage(),
                   _buildHealthMetricsPage(),
                   _buildLoadingPage(),
@@ -317,7 +362,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ),
 
             // Next button (hide on loading page)
-            if (_currentPage < 9) // Updated for new page count
+            if (_currentPage < _totalPages - 1)
               Padding(
                 padding: const EdgeInsets.all(24),
                 child: Center(
@@ -347,6 +392,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
           ),
           const SizedBox(height: 40),
           TextField(
+            controller: TextEditingController(text: _name),
             onChanged: (value) {
               setState(() {
                 _name = value;
@@ -372,7 +418,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     );
   }
 
-  // New age input page
   Widget _buildAgePage() {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -1232,7 +1277,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     );
   }
 
-// New dynamic screen for symptoms and mood
   Widget _buildSymptomsAndMoodPage() {
     return SingleChildScrollView(
       child: Padding(
@@ -1251,43 +1295,44 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ),
             const SizedBox(height: 24),
 
-            // Symptoms grid - FIXED: Added missing closing parenthesis
+            // Symptoms grid
             Wrap(
               spacing: 8,
               runSpacing: 12,
               children: _availableSymptoms.map((symptom) {
                 final isSelected = _selectedSymptoms.contains(symptom);
                 return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        if (isSelected) {
-                          _selectedSymptoms.remove(symptom);
-                        } else {
-                          _selectedSymptoms.add(symptom);
-                        }
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppColors.primary : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isSelected
-                              ? AppColors.primary
-                              : Colors.grey.shade300,
-                          width: 1,
-                        ),
+                  onTap: () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedSymptoms.remove(symptom);
+                      } else {
+                        _selectedSymptoms.add(symptom);
+                      }
+                    });
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppColors.primary
+                            : Colors.grey.shade300,
+                        width: 1,
                       ),
-                      child: Text(
-                        symptom,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isSelected ? Colors.white : Colors.black87,
-                        ),
+                    ),
+                    child: Text(
+                      symptom,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isSelected ? Colors.white : Colors.black87,
                       ),
-                    )); // FIXED: Added missing closing parenthesis here
+                    ),
+                  ),
+                );
               }).toList(),
             ),
 
@@ -1303,43 +1348,44 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ),
             const SizedBox(height: 24),
 
-            // Moods grid - FIXED: Added missing closing parenthesis
+            // Moods grid
             Wrap(
               spacing: 8,
               runSpacing: 12,
               children: _availableMoods.map((mood) {
                 final isSelected = _selectedMoods.contains(mood);
                 return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        if (isSelected) {
-                          _selectedMoods.remove(mood);
-                        } else {
-                          _selectedMoods.add(mood);
-                        }
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppColors.secondary : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isSelected
-                              ? AppColors.secondary
-                              : Colors.grey.shade300,
-                          width: 1,
-                        ),
+                  onTap: () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedMoods.remove(mood);
+                      } else {
+                        _selectedMoods.add(mood);
+                      }
+                    });
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.secondary : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppColors.secondary
+                            : Colors.grey.shade300,
+                        width: 1,
                       ),
-                      child: Text(
-                        mood,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isSelected ? Colors.white : Colors.black87,
-                        ),
+                    ),
+                    child: Text(
+                      mood,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isSelected ? Colors.white : Colors.black87,
                       ),
-                    )); // FIXED: Added missing closing parenthesis here
+                    ),
+                  ),
+                );
               }).toList(),
             ),
 
@@ -1380,7 +1426,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     );
   }
 
-// New dynamic screen for health metrics
   Widget _buildHealthMetricsPage() {
     return SingleChildScrollView(
       child: Padding(
@@ -1616,125 +1661,100 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
         children: [
           const SizedBox(height: 16),
           const Text(
-            "When did your last period start?",
+            "When was your last period?",
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
+          const Text(
+            "This helps us predict your next period and fertile window accurately.",
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 40),
 
-          // Month selector
+          // Calendar for period selection
+          Expanded(
+            child: TableCalendar(
+              firstDay: DateTime.now().subtract(const Duration(days: 90)),
+              lastDay: DateTime.now(),
+              focusedDay: _lastPeriodDate,
+              selectedDayPredicate: (day) {
+                return isSameDay(_lastPeriodDate, day);
+              },
+              onDaySelected: (selectedDay, focusedDay) {
+                setState(() {
+                  _lastPeriodDate = selectedDay;
+                });
+              },
+              calendarStyle: CalendarStyle(
+                selectedDecoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                todayDecoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              headerStyle: const HeaderStyle(
+                formatButtonVisible: false,
+                titleCentered: true,
+              ),
+            ),
+          ),
+
+          // Selected date display
           Center(
-            child: Text(
-              "August",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Text(
+                "Selected: ${DateFormat('MMM dd, yyyy').format(_lastPeriodDate)}",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.primary,
+                ),
               ),
             ),
           ),
 
           const SizedBox(height: 16),
 
-          // Calendar
-          Expanded(
-            child: Column(
+          // Info text
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
               children: [
-                // Weekday headers
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: const [
-                    Text("Sun",
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    Text("Mon",
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    Text("Tue",
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    Text("Wed",
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    Text("Thu",
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    Text("Fri",
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    Text("Sat",
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: Colors.blue.shade700,
+                  size: 24,
                 ),
-
-                const SizedBox(height: 16),
-
-                // Calendar grid
+                const SizedBox(width: 12),
                 Expanded(
-                  child: GridView.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 7,
-                      childAspectRatio: 1,
+                  child: Text(
+                    "Select the first day of your most recent period. This is important for accurate cycle predictions.",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.blue.shade700,
                     ),
-                    itemCount: 42, // 6 weeks
-                    itemBuilder: (context, index) {
-                      // This is a simplified calendar for the mockup
-                      // In a real app, you'd calculate the actual days
-                      final day = index -
-                          2; // Start from -2 to align with the first day of the month
-
-                      if (day < 1 || day > 31) {
-                        return const SizedBox();
-                      }
-
-                      final isSelected = day == 20 || day == 21;
-                      final isToday = day == 15;
-
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _lastPeriodDate = DateTime(2023, 8, day);
-                          });
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.primary
-                                : (isToday
-                                    ? Colors.grey.shade200
-                                    : Colors.transparent),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              "$day",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: isSelected || isToday
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                                color:
-                                    isSelected ? Colors.white : Colors.black87,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
                   ),
                 ),
               ],
-            ),
-          ),
-
-          // Month selector
-          Center(
-            child: Text(
-              "September",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
             ),
           ),
         ],

@@ -189,6 +189,79 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
     _nextOvulationDate = today.add(const Duration(days: 14));
   }
 
+  Future<void> _setPeriodDate(DateTime selectedDate) async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUser;
+
+      if (currentUser == null) {
+        print('❌ No current user found');
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Format date as YYYY-MM-DD to ensure proper API handling
+      final formattedDate = DateFormat('yyyy-MM-dd').format(selectedDate);
+
+      print('🔄 Setting new period date: $formattedDate');
+
+      // Default values for a new cycle
+      final newCycle = {
+        "userId": currentUser.id,
+        "startDate": formattedDate,
+        "cycleLength": _currentCycleLength,
+        "periodLength": _currentPeriodLength,
+        "flow": "medium", // Default flow
+        "mood": "normal", // Default mood
+        "symptoms": [], // Empty symptoms
+        "notes": "Period date set from calendar"
+      };
+
+      print('🔄 Sending cycle data: $newCycle');
+
+      // Call the API to add a new cycle
+      final response = await ApiService.addCycle(newCycle);
+
+      if (response != null && response['success'] == true) {
+        print('✅ Successfully set period date: $formattedDate');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Period date set successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Reload cycle data to reflect the new period
+        await _loadCycleData();
+      } else {
+        print('❌ Failed to set period date');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to set period date'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error setting period date: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -248,7 +321,7 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                                   icon: const Icon(Icons.calendar_month),
                                   color: AppColors.primary,
                                   iconSize: 24,
-                                  tooltip: 'Set Period Date',
+                                  tooltip: 'Period DateSet ',
                                 ),
                                 IconButton(
                                   onPressed: () {
@@ -302,6 +375,81 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                               _selectedDay = selectedDay;
                               _focusedDay = focusedDay;
                             });
+
+                            // Show options to set period or log symptoms
+                            showModalBottomSheet(
+                              context: context,
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(20),
+                                ),
+                              ),
+                              builder: (context) => Container(
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      "Selected: ${DateFormat('MMMM d, yyyy').format(selectedDay)}",
+                                      style: TextStyles.heading3,
+                                    ),
+                                    const SizedBox(height: 20),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: ElevatedButton.icon(
+                                            onPressed: () {
+                                              Navigator.pop(context);
+                                              _setPeriodDate(selectedDay);
+                                            },
+                                            icon: const Icon(
+                                                Icons.calendar_today),
+                                            label: const Text(
+                                                "Set Period Start Date"),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  AppColors.primary,
+                                              foregroundColor: Colors.white,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 12),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: ElevatedButton.icon(
+                                            onPressed: () {
+                                              Navigator.pop(context);
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      const LogSymptomsScreen(),
+                                                ),
+                                              ).then((_) => _loadCycleData());
+                                            },
+                                            icon: const Icon(Icons.edit_note),
+                                            label: const Text("Log Symptoms"),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.purple,
+                                              foregroundColor: Colors.white,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 12),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
                           },
                           onFormatChanged: (format) {
                             setState(() {
@@ -506,15 +654,15 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) =>
-                                              const NewDateScreen(),
+                                              const ReportsScreen(),
                                         ),
-                                      ).then((_) => _loadCycleData());
+                                      );
                                     },
-                                    text: "Set Period Date",
-                                    icon: Icons.calendar_today_rounded,
+                                    text: "View Reports",
+                                    icon: Icons.bar_chart_rounded,
                                     gradientColors: [
-                                      Colors.purple,
-                                      Colors.purpleAccent,
+                                      Colors.orange,
+                                      Colors.amber,
                                     ],
                                   ),
                                 ),
@@ -550,15 +698,15 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) =>
-                                              const ReportsScreen(),
+                                              const NewDateScreen(),
                                         ),
-                                      );
+                                      ).then((_) => _loadCycleData());
                                     },
-                                    text: "View Reports",
-                                    icon: Icons.bar_chart_rounded,
+                                    text: "Set Period Date",
+                                    icon: Icons.calendar_today_rounded,
                                     gradientColors: [
-                                      Colors.orange,
-                                      Colors.amber,
+                                      Colors.purple,
+                                      Colors.purpleAccent,
                                     ],
                                   ),
                                 ),

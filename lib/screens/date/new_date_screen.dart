@@ -5,6 +5,9 @@ import 'package:menstrual_health_ai/constants/app_colors.dart';
 import 'package:menstrual_health_ai/constants/text_styles.dart';
 import 'package:menstrual_health_ai/widgets/animated_gradient_button.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:provider/provider.dart';
+import 'package:menstrual_health_ai/providers/auth_provider.dart';
+import 'package:menstrual_health_ai/services/api_service.dart';
 
 class NewDateScreen extends StatefulWidget {
   const NewDateScreen({super.key});
@@ -16,19 +19,7 @@ class NewDateScreen extends StatefulWidget {
 class _NewDateScreenState extends State<NewDateScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
-  final DateTime _selectedPeriodDate = DateTime(2025, 5, 3);
-  String _currentMood = "";
-  
-  final List<String> _moods = [
-    "Happy",
-    "Sad",
-    "Tired",
-    "Energetic",
-    "Anxious",
-    "Calm",
-    "Irritable",
-    "Relaxed"
-  ];
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -43,22 +34,17 @@ class _NewDateScreenState extends State<NewDateScreen> {
               children: [
                 // Header with back button
                 _buildHeader(),
-                
+
                 // Calendar card
                 _buildCalendarCard(),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // Selected date card
                 _buildSelectedDateCard(),
-                
-                const SizedBox(height: 16),
-                
-                // Mood card
-                _buildMoodCard(),
-                
+
                 const SizedBox(height: 24),
-                
+
                 // Set button
                 _buildSetButton(),
               ],
@@ -94,30 +80,11 @@ class _NewDateScreenState extends State<NewDateScreen> {
               onPressed: () => Navigator.pop(context),
             ),
           ),
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.person_outline_rounded, size: 20),
-              onPressed: () {},
-            ),
-          ),
         ],
       )
-      .animate()
-      .fadeIn(duration: 600.ms)
-      .slideY(begin: -10, end: 0, curve: Curves.easeOutQuad),
+          .animate()
+          .fadeIn(duration: 600.ms)
+          .slideY(begin: -10, end: 0, curve: Curves.easeOutQuad),
     );
   }
 
@@ -190,9 +157,12 @@ class _NewDateScreenState extends State<NewDateScreen> {
               },
               calendarStyle: CalendarStyle(
                 outsideDaysVisible: true,
-                defaultTextStyle: const TextStyle(fontSize: 14, color: Colors.black87),
-                weekendTextStyle: const TextStyle(fontSize: 14, color: Colors.black87),
-                holidayTextStyle: const TextStyle(fontSize: 14, color: Colors.black87),
+                defaultTextStyle:
+                    const TextStyle(fontSize: 14, color: Colors.black87),
+                weekendTextStyle:
+                    const TextStyle(fontSize: 14, color: Colors.black87),
+                holidayTextStyle:
+                    const TextStyle(fontSize: 14, color: Colors.black87),
                 todayDecoration: BoxDecoration(
                   color: AppColors.primary.withOpacity(0.3),
                   shape: BoxShape.circle,
@@ -205,18 +175,21 @@ class _NewDateScreenState extends State<NewDateScreen> {
               headerStyle: const HeaderStyle(
                 formatButtonVisible: false,
                 titleCentered: true,
-                titleTextStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                leftChevronIcon: Icon(Icons.chevron_left, color: Colors.black54),
-                rightChevronIcon: Icon(Icons.chevron_right, color: Colors.black54),
+                titleTextStyle:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                leftChevronIcon:
+                    Icon(Icons.chevron_left, color: Colors.black54),
+                rightChevronIcon:
+                    Icon(Icons.chevron_right, color: Colors.black54),
               ),
             ),
           ],
         ),
       ),
     )
-    .animate()
-    .fadeIn(duration: 800.ms, delay: 200.ms)
-    .slideY(begin: 20, end: 0, curve: Curves.easeOutQuad);
+        .animate()
+        .fadeIn(duration: 800.ms, delay: 200.ms)
+        .slideY(begin: 20, end: 0, curve: Curves.easeOutQuad);
   }
 
   Widget _buildSelectedDateCard() {
@@ -258,10 +231,10 @@ class _NewDateScreenState extends State<NewDateScreen> {
                   width: 1,
                 ),
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
-                  "3rd May, 2025",
-                  style: TextStyle(
+                  DateFormat('d MMMM, yyyy').format(_selectedDay),
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: AppColors.primary,
@@ -273,144 +246,97 @@ class _NewDateScreenState extends State<NewDateScreen> {
         ),
       ),
     )
-    .animate()
-    .fadeIn(duration: 800.ms, delay: 400.ms)
-    .slideY(begin: 20, end: 0, curve: Curves.easeOutQuad);
-  }
-
-  Widget _buildMoodCard() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "What is Your Current Mood?",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade800,
-              ),
-            ),
-            const SizedBox(height: 16),
-            GestureDetector(
-              onTap: () {
-                // Show mood selection dialog
-                _showMoodSelectionDialog();
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.primary.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: const Center(
-                  child: Text(
-                    "Visit the Salon",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    )
-    .animate()
-    .fadeIn(duration: 800.ms, delay: 600.ms)
-    .slideY(begin: 20, end: 0, curve: Curves.easeOutQuad);
-  }
-
-  void _showMoodSelectionDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Select Your Mood"),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: GridView.builder(
-            shrinkWrap: true,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 2.5,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemCount: _moods.length,
-            itemBuilder: (context, index) {
-              final mood = _moods[index];
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _currentMood = mood;
-                  });
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppColors.primary.withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      mood,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-        ],
-      ),
-    );
+        .animate()
+        .fadeIn(duration: 800.ms, delay: 400.ms)
+        .slideY(begin: 20, end: 0, curve: Curves.easeOutQuad);
   }
 
   Widget _buildSetButton() {
     return AnimatedGradientButton(
-      text: "SET",
-      onPressed: () {
-        Navigator.pop(context);
-      },
+      text: _isLoading ? "SETTING..." : "SET PERIOD DATE",
+      onPressed: _isLoading ? null : _setPeriodDate,
     )
-    .animate()
-    .fadeIn(duration: 800.ms, delay: 800.ms)
-    .slideY(begin: 20, end: 0, curve: Curves.easeOutQuad);
+        .animate()
+        .fadeIn(duration: 800.ms, delay: 800.ms)
+        .slideY(begin: 20, end: 0, curve: Curves.easeOutQuad);
+  }
+
+  Future<void> _setPeriodDate() async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUser;
+
+      if (currentUser == null) {
+        print('❌ No current user found');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You need to be logged in to set a period date'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Format date as YYYY-MM-DD to ensure proper API handling
+      final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDay);
+
+      print('🔄 Setting new period date: $formattedDate');
+
+      // Create cycle data
+      final newCycle = {
+        "userId": currentUser.id,
+        "startDate": formattedDate,
+        "cycleLength": 28, // Default cycle length
+        "periodLength": 5, // Default period length
+        "flow": "medium",
+        "mood": "normal",
+        "symptoms": [],
+        "notes": "Period date set from calendar"
+      };
+
+      // Send to API
+      final response = await ApiService.addCycle(newCycle);
+
+      // Check for success directly from the response
+      if (response != null && response['success'] == true) {
+        print('✅ Successfully set period date: $formattedDate');
+        print('Response data: ${response['data']}');
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Period date set successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true); // Return success to previous screen
+      } else {
+        print('❌ Failed to set period date');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to set period date'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error setting period date: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 }
