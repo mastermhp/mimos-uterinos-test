@@ -8,7 +8,7 @@ import 'package:menstrual_health_ai/screens/onboarding/onboarding_screens.dart';
 import 'package:menstrual_health_ai/screens/onboarding/splash_screens.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 
 void main() async {
   // Ensure Flutter is initialized
@@ -62,18 +62,39 @@ class _AppInitializerState extends State<AppInitializer> {
   }
 
   Future<void> _initializeApp() async {
-    final prefs = await SharedPreferences.getInstance();
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    // Check if user has completed onboarding
-    _hasCompletedOnboarding = prefs.getBool('hasCompletedOnboarding') ?? false;
+      // Check if user has completed onboarding
+      _hasCompletedOnboarding =
+          prefs.getBool('hasCompletedOnboarding') ?? false;
 
-    // Check authentication status
-    await authProvider.checkAuth();
+      if (kDebugMode) {
+        print('🚀 App Initialization:');
+        print('  - hasCompletedOnboarding: $_hasCompletedOnboarding');
+      }
 
-    setState(() {
-      _isLoading = false;
-    });
+      // Check authentication status - this will load from storage and validate
+      final isAuthenticated = await authProvider.checkAuth();
+
+      if (kDebugMode) {
+        print('  - isAuthenticated: $isAuthenticated');
+        print('  - currentUser: ${authProvider.currentUser?.name}');
+        print('  - hasToken: ${authProvider.token != null}');
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ App initialization error: $e');
+      }
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override

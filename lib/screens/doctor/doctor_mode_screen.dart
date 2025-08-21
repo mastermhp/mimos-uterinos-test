@@ -29,13 +29,13 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
   Map<String, dynamic> _report = {};
   List<Map<String, dynamic>> _consultations = [];
   List<Map<String, dynamic>> _aiConsultations = [];
-  
+
   // Variables for AI consultation form
   final _symptomsController = TextEditingController();
   final _durationController = TextEditingController();
   final _notesController = TextEditingController();
   double _severity = 5.0;
-  
+
   // Flag to show which view is active (AI or real doctor)
   bool _showAiDoctorView = false;
 
@@ -55,43 +55,172 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
     super.dispose();
   }
 
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.isDarkMode;
+    final userDataProvider = Provider.of<UserDataProvider>(context);
+    final userData = userDataProvider.userData;
+    final authProvider = Provider.of<AuthProvider>(context);
+    final currentUser = authProvider.currentUser;
+
+    // Debug prints to help identify the issue
+    print('🔍 DoctorModeScreen Build Debug:');
+    print('- User Data: ${userData != null ? "Available" : "Null"}');
+    print(
+        '- Current User: ${currentUser != null ? "Available (${currentUser.id})" : "Null"}');
+    print('- Is Loading: $_isLoading');
+    print('- Report Data: ${_report.isEmpty ? "Empty" : "Has Data"}');
+    print('- Consultations: ${_consultations.length}');
+    print('- AI Consultations: ${_aiConsultations.length}');
+
+    // Check if we need to reload data when user becomes available
+    if (currentUser != null &&
+        !_isLoading &&
+        _report.isEmpty &&
+        _consultations.isEmpty &&
+        _aiConsultations.isEmpty) {
+      print(
+          '🔄 Triggering data reload because user is available but data is empty');
+      Future.microtask(() => _loadData());
+    }
+
+    return Theme(
+      data: themeProvider.getTheme(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Doctor Mode"),
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadData,
+            ),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'Doctor Options', icon: Icon(Icons.health_and_safety)),
+              Tab(
+                  text: 'Doctor Appointments',
+                  icon: Icon(Icons.calendar_month)),
+              Tab(text: 'AI Consultations', icon: Icon(Icons.psychology)),
+            ],
+          ),
+        ),
+        body: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.primary,
+                ),
+              )
+            : currentUser == null
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_off, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          "Please log in to access doctor mode",
+                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  )
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildDoctorOptionsTab(),
+                      _buildDoctorAppointmentsTab(),
+                      _buildAIConsultationsTab(),
+                    ],
+                  ),
+      ),
+    );
+  }
+
   Future<void> _loadData() async {
+    print('🔄 Starting _loadData...');
+
     setState(() {
       _isLoading = true;
     });
 
     try {
-      final userData =
-          Provider.of<UserDataProvider>(context, listen: false).userData;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUser;
 
-      if (userData != null && currentUser != null) {
-        // Load AI report, consultations, and AI consultations in parallel
-        await Future.wait([
-          _loadAIReport(userData),
-          _loadConsultations(currentUser.id),
-          _loadAIConsultations(currentUser.id),
+      print('🔍 LoadData Debug:');
+      print(
+          '- Current User: ${currentUser != null ? "Available (${currentUser.id})" : "Null"}');
+
+      if (currentUser != null) {
+        print('✅ User is available, loading data...');
+
+        // Load data in parallel
+        final results = await Future.wait([
+          _loadAIReport().catchError((e) {
+            print('❌ AI Report Error: $e');
+            return null;
+          }),
+          _loadConsultations(currentUser.id).catchError((e) {
+            print('❌ Consultations Error: $e');
+            return null;
+          }),
+          _loadAIConsultations(currentUser.id).catchError((e) {
+            print('❌ AI Consultations Error: $e');
+            return null;
+          }),
         ]);
+
+        print('📊 Data loading completed:');
+        print('- AI Report: ${_report.isNotEmpty ? "Loaded" : "Empty"}');
+        print('- Consultations: ${_consultations.length} items');
+        print('- AI Consultations: ${_aiConsultations.length} items');
+      } else {
+        print('❌ No current user available');
       }
     } catch (e) {
-      print('❌ Error loading doctor data: $e');
+      print('❌ Error in _loadData: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading data: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
-  Future<void> _loadAIReport(UserData userData) async {
+  Future<void> _loadAIReport() async {
     try {
-      final report = await _aiService.generateDoctorReport(userData);
-      setState(() {
-        _report = report;
-      });
-      print('✅ AI report loaded successfully');
+      final userDataProvider =
+          Provider.of<UserDataProvider>(context, listen: false);
+      final userData = userDataProvider.userData;
+
+      if (userData != null) {
+        print('🔄 Loading AI report...');
+        final report = await _aiService.generateDoctorReport(userData);
+        if (mounted) {
+          setState(() {
+            _report = report;
+          });
+        }
+        print('✅ AI report loaded successfully');
+      } else {
+        print('⚠️ No user data available for AI report');
+      }
     } catch (e) {
       print('❌ Error loading AI report: $e');
+      // Don't throw, just log the error
     }
   }
 
@@ -103,26 +232,36 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
         userId: userId,
       );
 
-      if (response != null && response['success'] == true) {
-        final data = response['data'] as List<dynamic>;
+      print('📡 Consultations API Response: $response');
 
-        setState(() {
-          _consultations = data.cast<Map<String, dynamic>>();
-        });
+      if (response != null && response['success'] == true) {
+        final data = response['data'] as List<dynamic>?;
+
+        if (mounted) {
+          setState(() {
+            _consultations = data?.cast<Map<String, dynamic>>() ?? [];
+          });
+        }
 
         print('✅ CONSULTATIONS LOADED SUCCESSFULLY!');
         print('📋 Found ${_consultations.length} doctor consultations');
       } else {
-        print('❌ Failed to load consultations or no consultations exist');
+        print(
+            '❌ Failed to load consultations: ${response?['message'] ?? 'Unknown error'}');
+        if (mounted) {
+          setState(() {
+            _consultations = [];
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Exception loading consultations: $e');
+      if (mounted) {
         setState(() {
           _consultations = [];
         });
       }
-    } catch (e) {
-      print('❌ Error loading consultations: $e');
-      setState(() {
-        _consultations = [];
-      });
+      // Don't throw, just log the error
     }
   }
 
@@ -134,26 +273,36 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
         userId: userId,
       );
 
-      if (response != null && response['success'] == true) {
-        final data = response['data'] as List<dynamic>;
+      print('📡 AI Consultations API Response: $response');
 
-        setState(() {
-          _aiConsultations = data.cast<Map<String, dynamic>>();
-        });
+      if (response != null && response['success'] == true) {
+        final data = response['data'] as List<dynamic>?;
+
+        if (mounted) {
+          setState(() {
+            _aiConsultations = data?.cast<Map<String, dynamic>>() ?? [];
+          });
+        }
 
         print('✅ AI CONSULTATIONS LOADED SUCCESSFULLY!');
         print('📋 Found ${_aiConsultations.length} AI consultations');
       } else {
-        print('❌ Failed to load AI consultations or none exist');
+        print(
+            '❌ Failed to load AI consultations: ${response?['message'] ?? 'Unknown error'}');
+        if (mounted) {
+          setState(() {
+            _aiConsultations = [];
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Exception loading AI consultations: $e');
+      if (mounted) {
         setState(() {
           _aiConsultations = [];
         });
       }
-    } catch (e) {
-      print('❌ Error loading AI consultations: $e');
-      setState(() {
-        _aiConsultations = [];
-      });
+      // Don't throw, just log the error
     }
   }
 
@@ -203,7 +352,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
 
         // Reload AI consultations
         await _loadAIConsultations(currentUser.id);
-        
+
         // Switch to AI consultations history tab
         _tabController.animateTo(2);
       } else {
@@ -262,7 +411,8 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                   ),
                   items: const [
                     DropdownMenuItem(value: 'virtual', child: Text('Virtual')),
-                    DropdownMenuItem(value: 'in-person', child: Text('In-Person')),
+                    DropdownMenuItem(
+                        value: 'in-person', child: Text('In-Person')),
                     DropdownMenuItem(value: 'phone', child: Text('Phone')),
                   ],
                   onChanged: (value) {
@@ -425,78 +575,6 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final isDarkMode = themeProvider.isDarkMode;
-    final userDataProvider = Provider.of<UserDataProvider>(context);
-    final userData = userDataProvider.userData;
-    final authProvider = Provider.of<AuthProvider>(context);
-
-    // Check if we need to reload data when user data becomes available
-    if (userData != null && !_isLoading && _report.isEmpty) {
-      // Trigger data loading when user data is available but not yet loaded
-      Future.microtask(() => _loadData());
-    }
-
-    return Theme(
-      data: themeProvider.getTheme(),
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("Doctor Mode"),
-          elevation: 0,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _loadData,
-            ),
-          ],
-          bottom: TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(text: 'Doctor Options', icon: Icon(Icons.health_and_safety)),
-              Tab(text: 'Doctor Appointments', icon: Icon(Icons.calendar_month)),
-              Tab(text: 'AI Consultations', icon: Icon(Icons.psychology)),
-            ],
-          ),
-        ),
-        body: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: AppColors.primary,
-                ),
-              )
-            : userData == null
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.person_off, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text(
-                          "No user data available",
-                          style: TextStyle(fontSize: 18, color: Colors.grey),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          "Please complete your profile first",
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  )
-                : TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildDoctorOptionsTab(),
-                      _buildDoctorAppointmentsTab(),
-                      _buildAIConsultationsTab(),
-                    ],
-                  ),
-      ),
-    );
-  }
-  
   Widget _buildDoctorOptionsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -530,8 +608,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                           child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: _showAiDoctorView 
-                                  ? const Color(0xFFD4C1F9)  // Lighter purple when selected
+                              color: _showAiDoctorView
+                                  ? const Color(
+                                      0xFFD4C1F9) // Lighter purple when selected
                                   : const Color(0xFFE3D5FA), // Light purple
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -540,7 +619,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                               children: [
                                 Icon(
                                   Icons.psychology,
-                                  color: _showAiDoctorView ? Colors.deepPurple : Colors.purple,
+                                  color: _showAiDoctorView
+                                      ? Colors.deepPurple
+                                      : Colors.purple,
                                   size: 32,
                                 ),
                                 const SizedBox(height: 8),
@@ -548,7 +629,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                                   "AI Doctor",
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: _showAiDoctorView ? Colors.deepPurple : Colors.purple[700],
+                                    color: _showAiDoctorView
+                                        ? Colors.deepPurple
+                                        : Colors.purple[700],
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -556,7 +639,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                                   "Get Prescription",
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: _showAiDoctorView ? Colors.deepPurple : Colors.purple[700],
+                                    color: _showAiDoctorView
+                                        ? Colors.deepPurple
+                                        : Colors.purple[700],
                                   ),
                                 ),
                               ],
@@ -575,8 +660,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                           child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: !_showAiDoctorView 
-                                  ? const Color(0xFFA7EED2)  // Lighter green when selected
+                              color: !_showAiDoctorView
+                                  ? const Color(
+                                      0xFFA7EED2) // Lighter green when selected
                                   : const Color(0xFFC7F5E4), // Light green
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -585,7 +671,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                               children: [
                                 Icon(
                                   Icons.person,
-                                  color: !_showAiDoctorView ? Colors.green[700] : Colors.green,
+                                  color: !_showAiDoctorView
+                                      ? Colors.green[700]
+                                      : Colors.green,
                                   size: 32,
                                 ),
                                 const SizedBox(height: 8),
@@ -593,7 +681,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                                   "Real Doctor",
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: !_showAiDoctorView ? Colors.green[700] : Colors.green,
+                                    color: !_showAiDoctorView
+                                        ? Colors.green[700]
+                                        : Colors.green,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -601,7 +691,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                                   "Book Appointment",
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: !_showAiDoctorView ? Colors.green[700] : Colors.green,
+                                    color: !_showAiDoctorView
+                                        ? Colors.green[700]
+                                        : Colors.green,
                                   ),
                                 ),
                               ],
@@ -615,17 +707,17 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               ),
             ),
           ).animate().fadeIn(duration: 300.ms).slideY(begin: 20, end: 0),
-          
+
           const SizedBox(height: 24),
-          
+
           // Show either AI Doctor form or Real Doctor booking button
           if (_showAiDoctorView)
             _buildAIDoctorRequestForm()
           else
             _buildRealDoctorBookingSection(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Previous consultations preview
           if (_showAiDoctorView && _aiConsultations.isNotEmpty)
             _buildPreviousAIPrescriptionsPreview()
@@ -635,7 +727,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
       ),
     );
   }
-  
+
   Widget _buildAIDoctorRequestForm() {
     return Card(
       shape: RoundedRectangleBorder(
@@ -656,7 +748,6 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               style: TextStyles.body2,
             ),
             const SizedBox(height: 20),
-            
             Text(
               "Symptoms",
               style: TextStyles.subtitle2,
@@ -672,7 +763,6 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 ),
               ),
             ),
-            
             const SizedBox(height: 16),
             Text(
               "Severity (1-10)",
@@ -706,7 +796,6 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 style: TextStyles.body2.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
-            
             const SizedBox(height: 16),
             Text(
               "Duration",
@@ -722,7 +811,6 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 ),
               ),
             ),
-            
             const SizedBox(height: 16),
             Text(
               "Additional Notes",
@@ -739,7 +827,6 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 ),
               ),
             ),
-            
             const SizedBox(height: 24),
             Center(
               child: SizedBox(
@@ -762,9 +849,12 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
           ],
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms, delay: 100.ms).slideY(begin: 20, end: 0);
+    )
+        .animate()
+        .fadeIn(duration: 300.ms, delay: 100.ms)
+        .slideY(begin: 20, end: 0);
   }
-  
+
   Widget _buildRealDoctorBookingSection() {
     return Card(
       shape: RoundedRectangleBorder(
@@ -785,7 +875,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               style: TextStyles.body2,
             ),
             const SizedBox(height: 20),
-            
+
             // Appointment features
             Row(
               children: [
@@ -802,7 +892,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 _buildFeatureItem(Icons.schedule, "Flexible Scheduling"),
               ],
             ),
-            
+
             const SizedBox(height: 24),
             Center(
               child: SizedBox(
@@ -825,9 +915,12 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
           ],
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms, delay: 100.ms).slideY(begin: 20, end: 0);
+    )
+        .animate()
+        .fadeIn(duration: 300.ms, delay: 100.ms)
+        .slideY(begin: 20, end: 0);
   }
-  
+
   Widget _buildFeatureItem(IconData icon, String text) {
     return Expanded(
       child: Container(
@@ -854,7 +947,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
       ),
     );
   }
-  
+
   Widget _buildPreviousAIPrescriptionsPreview() {
     return Card(
       shape: RoundedRectangleBorder(
@@ -870,7 +963,8 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               children: [
                 Text(
                   "Previous AI Prescriptions",
-                  style: TextStyles.subtitle1.copyWith(fontWeight: FontWeight.bold),
+                  style: TextStyles.subtitle1
+                      .copyWith(fontWeight: FontWeight.bold),
                 ),
                 TextButton(
                   onPressed: () {
@@ -881,25 +975,38 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               ],
             ),
             const SizedBox(height: 8),
-            
+
             // Show latest 2 AI consultations
-            ..._aiConsultations
-                .take(2)
-                .map((consultation) => _buildAIConsultationPreviewItem(consultation)),
+            ..._aiConsultations.take(2).map((consultation) =>
+                _buildAIConsultationPreviewItem(consultation)),
           ],
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms, delay: 200.ms).slideY(begin: 20, end: 0);
+    )
+        .animate()
+        .fadeIn(duration: 300.ms, delay: 200.ms)
+        .slideY(begin: 20, end: 0);
   }
-  
+
   Widget _buildUpcomingAppointmentsPreview() {
     // Filter to show only upcoming appointments
     final upcomingAppointments = _consultations.where((c) {
+      // Fix: Handle null status safely
       final status = c['status'] as String? ?? 'scheduled';
-      final scheduledDate = DateTime.parse(c['scheduledDate']);
-      return status == 'scheduled' && scheduledDate.isAfter(DateTime.now());
+
+      // Fix: Handle null scheduledDate safely
+      final scheduledDateStr = c['scheduledDate'] as String?;
+      if (scheduledDateStr == null) return false;
+
+      try {
+        final scheduledDate = DateTime.parse(scheduledDateStr);
+        return status == 'scheduled' && scheduledDate.isAfter(DateTime.now());
+      } catch (e) {
+        print('Error parsing scheduledDate: $scheduledDateStr, error: $e');
+        return false;
+      }
     }).toList();
-    
+
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -914,7 +1021,8 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               children: [
                 Text(
                   "Upcoming Appointments",
-                  style: TextStyles.subtitle1.copyWith(fontWeight: FontWeight.bold),
+                  style: TextStyles.subtitle1
+                      .copyWith(fontWeight: FontWeight.bold),
                 ),
                 TextButton(
                   onPressed: () {
@@ -925,7 +1033,6 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               ],
             ),
             const SizedBox(height: 8),
-            
             if (upcomingAppointments.isEmpty)
               const Center(
                 child: Padding(
@@ -938,73 +1045,20 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               )
             else
               // Show latest 2 upcoming appointments
-              ...upcomingAppointments
-                  .take(2)
-                  .map((consultation) => _buildAppointmentPreviewItem(consultation)),
+              ...upcomingAppointments.take(2).map(
+                  (consultation) => _buildAppointmentPreviewItem(consultation)),
           ],
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms, delay: 200.ms).slideY(begin: 20, end: 0);
+    )
+        .animate()
+        .fadeIn(duration: 300.ms, delay: 200.ms)
+        .slideY(begin: 20, end: 0);
   }
-  
-  Widget _buildAIConsultationPreviewItem(Map<String, dynamic> consultation) {
-    final createdAt = DateTime.parse(consultation['createdAt']);
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.deepPurple.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.psychology, color: Colors.deepPurple, size: 16),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "AI Prescription",
-                    style: TextStyles.body2.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    DateFormat('MMM d, yyyy').format(createdAt),
-                    style: TextStyles.caption,
-                  ),
-                ],
-              ),
-              const Spacer(),
-              const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-            ],
-          ),
-          if (consultation['symptoms'] != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              "Symptoms: ${consultation['symptoms']}",
-              style: TextStyles.caption,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-  
+
   Widget _buildAppointmentPreviewItem(Map<String, dynamic> consultation) {
     final scheduledDate = DateTime.parse(consultation['scheduledDate']);
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -1032,7 +1086,8 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                   children: [
                     Text(
                       consultation['doctorName'] ?? "Doctor",
-                      style: TextStyles.body2.copyWith(fontWeight: FontWeight.bold),
+                      style: TextStyles.body2
+                          .copyWith(fontWeight: FontWeight.bold),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1053,6 +1108,81 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               style: TextStyles.caption,
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAIConsultationPreviewItem(Map<String, dynamic> consultation) {
+    final createdAt = DateTime.parse(consultation['createdAt']);
+    final symptoms =
+        consultation['symptoms'] as String? ?? 'No symptoms specified';
+    final severity = consultation['severity'] as int? ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.psychology,
+                    color: Colors.deepPurple, size: 16),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "AI Prescription",
+                      style: TextStyles.body2
+                          .copyWith(fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      DateFormat('MMM d, yyyy').format(createdAt),
+                      style: TextStyles.caption,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _getSeverityColor(severity).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "$severity/10",
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _getSeverityColor(severity),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Symptoms: ${symptoms.length > 50 ? '${symptoms.substring(0, 50)}...' : symptoms}",
+            style: TextStyles.caption,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
@@ -1117,16 +1247,19 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                         ),
                       ),
                     ),
-                  ).animate().fadeIn(duration: 300.ms).slideY(begin: -20, end: 0);
+                  )
+                      .animate()
+                      .fadeIn(duration: 300.ms)
+                      .slideY(begin: -20, end: 0);
                 }
-                
+
                 final consultation = _consultations[index - 1];
                 return _buildConsultationCard(consultation);
               },
             ),
     );
   }
-  
+
   Widget _buildAIConsultationsTab() {
     return RefreshIndicator(
       onRefresh: () async {
@@ -1191,9 +1324,12 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                         ),
                       ),
                     ),
-                  ).animate().fadeIn(duration: 300.ms).slideY(begin: -20, end: 0);
+                  )
+                      .animate()
+                      .fadeIn(duration: 300.ms)
+                      .slideY(begin: -20, end: 0);
                 }
-                
+
                 final consultation = _aiConsultations[index - 1];
                 return _buildAIConsultationCard(consultation);
               },
@@ -1202,9 +1338,24 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
   }
 
   Widget _buildConsultationCard(Map<String, dynamic> consultation) {
-    final scheduledDate = DateTime.parse(consultation['scheduledDate']);
+    // Fix: Handle null scheduledDate safely
+    final scheduledDateStr = consultation['scheduledDate'] as String?;
+    if (scheduledDateStr == null) {
+      // Return an error card or skip this consultation
+      return const SizedBox.shrink();
+    }
+
+    DateTime scheduledDate;
+    try {
+      scheduledDate = DateTime.parse(scheduledDateStr);
+    } catch (e) {
+      print('Error parsing scheduledDate: $scheduledDateStr, error: $e');
+      return const SizedBox.shrink();
+    }
+
     final isUpcoming = scheduledDate.isAfter(DateTime.now());
-    final status = consultation['status'] ?? 'scheduled';
+    final status = consultation['status'] as String? ??
+        'scheduled'; // Fix: Handle null status
 
     Color statusColor;
     IconData statusIcon;
@@ -1225,6 +1376,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
         break;
     }
 
+    // ...rest of the existing method remains the same
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
@@ -1256,14 +1408,16 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        consultation['doctorName'] ?? 'Unknown Doctor',
+                        consultation['doctorName'] as String? ??
+                            'Unknown Doctor', // Fix: Handle null
                         style: TextStyles.subtitle1.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _capitalizeFirst(consultation['type'] ?? 'General'),
+                        _capitalizeFirst(consultation['type'] as String? ??
+                            'General'), // Fix: Handle null
                         style: TextStyles.body2.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -1346,7 +1500,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${consultation['duration'] ?? 30} min',
+                      '${consultation['duration'] as int? ?? 30} min', // Fix: Handle null
                       style: TextStyles.body2,
                     ),
                   ],
@@ -1364,7 +1518,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                consultation['reason'],
+                consultation['reason'] as String,
                 style: TextStyles.body2,
               ),
             ],
@@ -1379,7 +1533,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                consultation['notes'],
+                consultation['notes'] as String,
                 style: TextStyles.body2.copyWith(
                   fontStyle: FontStyle.italic,
                 ),
@@ -1392,7 +1546,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 if (status.toLowerCase() == 'scheduled') ...[
                   TextButton.icon(
                     onPressed: () => _updateConsultationStatus(
-                      consultation['id'],
+                      consultation['id'] as String,
                       'completed',
                     ),
                     icon: const Icon(Icons.check, size: 16),
@@ -1404,7 +1558,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                   const SizedBox(width: 8),
                   TextButton.icon(
                     onPressed: () => _updateConsultationStatus(
-                      consultation['id'],
+                      consultation['id'] as String,
                       'cancelled',
                     ),
                     icon: const Icon(Icons.cancel, size: 16),
@@ -1425,7 +1579,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
   Widget _buildAIConsultationCard(Map<String, dynamic> consultation) {
     final createdAt = DateTime.parse(consultation['createdAt']);
     final aiResponse = consultation['aiResponse'] as String? ?? '';
-    
+
     // Extract sections from AI response
     final sections = _extractAIResponseSections(aiResponse);
 
@@ -1507,7 +1661,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
             const SizedBox(height: 16),
             const Divider(height: 1),
             const SizedBox(height: 16),
-            
+
             // Symptoms and Severity
             Row(
               children: [
@@ -1553,7 +1707,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 ),
               ],
             ),
-            
+
             // Duration
             if (consultation['duration'] != null) ...[
               const SizedBox(height: 12),
@@ -1570,7 +1724,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 style: TextStyles.body2,
               ),
             ],
-            
+
             // Additional Notes
             if (consultation['additionalNotes'] != null &&
                 consultation['additionalNotes'].toString().isNotEmpty) ...[
@@ -1588,11 +1742,11 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 style: TextStyles.body2,
               ),
             ],
-            
+
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 16),
-            
+
             // AI Response Sections
             if (sections.isNotEmpty) ...[
               Text(
@@ -1602,7 +1756,6 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                 ),
               ),
               const SizedBox(height: 16),
-              
               for (var entry in sections.entries) ...[
                 if (entry.value.isNotEmpty) ...[
                   Text(
@@ -1679,27 +1832,28 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
       );
     }
   }
-  
+
   Map<String, String> _extractAIResponseSections(String response) {
     final Map<String, String> sections = {};
-    
+
     try {
       final sectionNames = [
-        'MEDICAL ASSESSMENT', 
-        'DIAGNOSIS/IMPRESSION', 
-        'RECOMMENDATIONS', 
-        'PRESCRIPTION', 
+        'MEDICAL ASSESSMENT',
+        'DIAGNOSIS/IMPRESSION',
+        'RECOMMENDATIONS',
+        'PRESCRIPTION',
         'FOLLOW-UP'
       ];
-      
+
       for (int i = 0; i < sectionNames.length; i++) {
         final currentSection = sectionNames[i];
-        final nextSection = i < sectionNames.length - 1 ? sectionNames[i + 1] : null;
-        
+        final nextSection =
+            i < sectionNames.length - 1 ? sectionNames[i + 1] : null;
+
         int startIndex = response.indexOf(currentSection);
         if (startIndex != -1) {
           startIndex += currentSection.length;
-          
+
           int endIndex;
           if (nextSection != null) {
             endIndex = response.indexOf(nextSection, startIndex);
@@ -1707,27 +1861,27 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
           } else {
             endIndex = response.length;
           }
-          
+
           String content = response.substring(startIndex, endIndex).trim();
           // Remove any leading ":" or newlines
           content = content.replaceFirst(RegExp(r'^[:\s\n]+'), '').trim();
-          
+
           sections[currentSection] = content;
         }
       }
     } catch (e) {
       print('Error parsing AI response: $e');
     }
-    
+
     return sections;
   }
-  
+
   Color _getSeverityColor(int severity) {
     if (severity <= 3) return Colors.green;
     if (severity <= 6) return Colors.orange;
     return Colors.red;
   }
-  
+
   Color _getSectionColor(String section) {
     switch (section) {
       case 'MEDICAL ASSESSMENT':
@@ -1744,11 +1898,14 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
         return Colors.black;
     }
   }
-  
+
   String _capitalizeFirst(String text) {
     if (text.isEmpty) return text;
-    return text.toLowerCase().split(' ').map((word) => 
-      word.isEmpty ? word : word[0].toUpperCase() + word.substring(1)
-    ).join(' ');
+    return text
+        .toLowerCase()
+        .split(' ')
+        .map((word) =>
+            word.isEmpty ? word : word[0].toUpperCase() + word.substring(1))
+        .join(' ');
   }
 }

@@ -20,6 +20,7 @@ import 'package:menstrual_health_ai/screens/auth/login_screen.dart';
 import 'package:menstrual_health_ai/widgets/animated_gradient_button.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:menstrual_health_ai/services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -31,6 +32,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   Map<String, dynamic>? _profileData;
+  Map<String, dynamic>? _cycleStats; // Add this line
 
   @override
   void initState() {
@@ -39,39 +41,149 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfileData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
-      // Get the auth provider to access current user info
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      
-      // You can access basic user info from auth provider
+      final userDataProvider =
+          Provider.of<UserDataProvider>(context, listen: false);
       final currentUser = authProvider.currentUser;
-      
+      final userData = userDataProvider.userData;
+
       if (currentUser != null) {
-        // For now, we'll use the current user data
-        // Later, you can implement API call to get full profile
-        setState(() {
+        print('🔄 Loading profile data for user: ${currentUser.id}');
+
+        // Load profile data and cycle statistics in parallel
+        final results = await Future.wait([
+          ApiService.getUserProfile(),
+          ApiService.getCycles(userId: currentUser.id),
+          ApiService.getUserCycleStats(userId: currentUser.id).catchError((e) {
+            print('⚠️ Failed to load cycle stats: $e');
+            return null;
+          }),
+        ]);
+
+        final profileResponse = results[0];
+        final cyclesResponse = results[1];
+        final cycleStatsResponse = results[2];
+
+        // Process profile data
+        if (profileResponse != null && profileResponse['success'] == true) {
+          _profileData = profileResponse['data'];
+          print('✅ Profile data loaded: $_profileData');
+        } else {
+          // Fallback to current user and userData - using only available properties
           _profileData = {
             'name': currentUser.name,
             'email': currentUser.email,
-            'hasCompletedOnboarding': true,
+            // Remove isVerified since it doesn't exist in User model
             'profile': {
-              'age': 28, // Default values, replace with API data
-              'cycleLength': 28,
-              'periodLength': 5,
+              'age': userData?.age ?? 25,
+              'cycleLength': userData?.cycleLength ?? 28,
+              'periodLength': userData?.periodLength ?? 5,
+              'lastPeriodDate': userData?.lastPeriodDate?.toIso8601String(),
+              'weight': userData?.weight,
+              'height': userData?.height,
+              // Remove fitnessLevel and contraceptiveMethod since they don't exist
             },
           };
+        }
+
+        // Process cycle statistics
+        Map<String, dynamic> calculatedStats = {
+          'cyclesTracked': 0,
+          'averageCycleLength': userData?.cycleLength ?? 28,
+          'averagePeriodLength': userData?.periodLength ?? 5,
+          'totalDaysTracked': 0,
+          'longestCycle': userData?.cycleLength ?? 28,
+          'shortestCycle': userData?.cycleLength ?? 28,
+        };
+
+        // Calculate statistics from cycles data
+        if (cyclesResponse != null && cyclesResponse['success'] == true) {
+          final cycles = cyclesResponse['data'] as List<dynamic>;
+          print('📊 Found ${cycles.length} cycles for statistics');
+
+          if (cycles.isNotEmpty) {
+            calculatedStats['cyclesTracked'] = cycles.length;
+
+            // Calculate averages from actual cycle data
+            final cycleLengths = <int>[];
+            final periodLengths = <int>[];
+            int totalDays = 0;
+
+            for (final cycle in cycles) {
+              final cycleLength = cycle['cycleLength'] as int? ?? 28;
+              final periodLength = cycle['periodLength'] as int? ?? 5;
+
+              cycleLengths.add(cycleLength);
+              periodLengths.add(periodLength);
+              totalDays += periodLength;
+            }
+
+            if (cycleLengths.isNotEmpty) {
+              calculatedStats['averageCycleLength'] =
+                  (cycleLengths.reduce((a, b) => a + b) / cycleLengths.length)
+                      .round();
+              calculatedStats['longestCycle'] =
+                  cycleLengths.reduce((a, b) => a > b ? a : b);
+              calculatedStats['shortestCycle'] =
+                  cycleLengths.reduce((a, b) => a < b ? a : b);
+            }
+
+            if (periodLengths.isNotEmpty) {
+              calculatedStats['averagePeriodLength'] =
+                  (periodLengths.reduce((a, b) => a + b) / periodLengths.length)
+                      .round();
+            }
+
+            calculatedStats['totalDaysTracked'] = totalDays;
+          }
+        }
+
+        // Use cycle statistics from API if available, otherwise use calculated stats
+        if (cycleStatsResponse != null &&
+            cycleStatsResponse['success'] == true) {
+          _cycleStats = cycleStatsResponse['data'];
+          print('✅ Cycle statistics loaded from API: $_cycleStats');
+        } else {
+          _cycleStats = calculatedStats;
+          print('✅ Using calculated cycle statistics: $_cycleStats');
+        }
+
+        setState(() {
           _isLoading = false;
         });
+
+        print('📊 Final stats:');
+        print('- Cycles tracked: ${_cycleStats!['cyclesTracked']}');
+        print(
+            '- Average cycle length: ${_cycleStats!['averageCycleLength']} days');
+        print(
+            '- Average period length: ${_cycleStats!['averagePeriodLength']} days');
       } else {
+        print('❌ No current user found');
         setState(() {
           _isLoading = false;
         });
       }
     } catch (e) {
-      print('Error loading profile: $e');
+      print('❌ Error loading profile: $e');
       setState(() {
         _isLoading = false;
       });
+
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load profile data: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -82,8 +194,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final backgroundColor = isDarkMode ? const Color(0xFF1A1A1A) : Colors.white;
     final cardColor = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
     final textColor = isDarkMode ? Colors.white : Colors.black87;
-    final secondaryTextColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
-    
+    final secondaryTextColor =
+        isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
+
     if (_isLoading) {
       return Scaffold(
         backgroundColor: backgroundColor,
@@ -92,7 +205,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
     }
-    
+
     return Scaffold(
       backgroundColor: backgroundColor,
       body: SafeArea(
@@ -101,17 +214,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Profile Header
-              _buildProfileHeader(context, authProvider, isDarkMode, textColor, secondaryTextColor),
-              
+              _buildProfileHeader(context, authProvider, isDarkMode, textColor,
+                  secondaryTextColor),
+
               // Stats Section
-              _buildStatsSection(context, isDarkMode, textColor, secondaryTextColor, cardColor),
-              
+              _buildStatsSection(context, isDarkMode, textColor,
+                  secondaryTextColor, cardColor),
+
               // Options Section
-              _buildOptionsSection(context, isDarkMode, textColor, secondaryTextColor, cardColor),
-              
+              _buildOptionsSection(context, isDarkMode, textColor,
+                  secondaryTextColor, cardColor),
+
               // Account Section
-              _buildAccountSection(context, authProvider, isDarkMode, textColor, secondaryTextColor, cardColor),
-              
+              _buildAccountSection(context, authProvider, isDarkMode, textColor,
+                  secondaryTextColor, cardColor),
+
               const SizedBox(height: 32),
             ],
           ),
@@ -119,10 +236,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-  
-  Widget _buildProfileHeader(BuildContext context, AuthProvider authProvider, bool isDarkMode, Color textColor, Color secondaryTextColor) {
+
+  Widget _buildProfileHeader(BuildContext context, AuthProvider authProvider,
+      bool isDarkMode, Color textColor, Color secondaryTextColor) {
     final currentUser = authProvider.currentUser;
-    
+
     return Container(
       padding: const EdgeInsets.all(24),
       child: Row(
@@ -193,7 +311,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
-          
             ],
           ),
           IconButton(
@@ -214,14 +331,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     ).animate().fadeIn(duration: 600.ms).slideY(begin: -10, end: 0);
   }
-  
-  Widget _buildStatsSection(BuildContext context, bool isDarkMode, Color textColor, Color secondaryTextColor, Color cardColor) {
-    // Use profile data if available, otherwise show defaults
-    final profile = _profileData?['profile'];
-    final cycleLength = profile?['cycleLength'] ?? 28;
-    final periodLength = profile?['periodLength'] ?? 5;
-    final cyclesTracked = 0; // You can track this in your app
-    
+
+  Widget _buildStatsSection(BuildContext context, bool isDarkMode,
+      Color textColor, Color secondaryTextColor, Color cardColor) {
+    // Use real cycle statistics
+    final cyclesTracked = _cycleStats?['cyclesTracked'] ?? 0;
+    final avgCycleLength = _cycleStats?['averageCycleLength'] ?? 28;
+    final avgPeriodLength = _cycleStats?['averagePeriodLength'] ?? 5;
+    final totalDaysTracked = _cycleStats?['totalDaysTracked'] ?? 0;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -249,30 +367,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            child: Column(
               children: [
-                _buildStatItem(
-                  "Cycles Tracked", 
-                  cyclesTracked.toString(), 
-                  Icons.loop_rounded,
-                  textColor,
-                  secondaryTextColor,
+                // First row of stats
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildStatItem(
+                      "Cycles Tracked",
+                      cyclesTracked.toString(),
+                      Icons.loop_rounded,
+                      textColor,
+                      secondaryTextColor,
+                    ),
+                    _buildStatItem(
+                      "Avg. Cycle Length",
+                      "$avgCycleLength days",
+                      Icons.calendar_today_rounded,
+                      textColor,
+                      secondaryTextColor,
+                    ),
+                    _buildStatItem(
+                      "Avg. Period Length",
+                      "$avgPeriodLength days",
+                      Icons.water_drop_rounded,
+                      textColor,
+                      secondaryTextColor,
+                    ),
+                  ],
                 ),
-                _buildStatItem(
-                  "Avg. Cycle Length", 
-                  "$cycleLength days", 
-                  Icons.calendar_today_rounded,
-                  textColor,
-                  secondaryTextColor,
-                ),
-                _buildStatItem(
-                  "Avg. Period Length", 
-                  "$periodLength days", 
-                  Icons.water_drop_rounded,
-                  textColor,
-                  secondaryTextColor,
-                ),
+                if (totalDaysTracked > 0) ...[
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 20),
+                  // Second row with additional stats
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatItem(
+                        "Days Tracked",
+                        totalDaysTracked.toString(),
+                        Icons.today_rounded,
+                        textColor,
+                        secondaryTextColor,
+                      ),
+                      _buildStatItem(
+                        "Longest Cycle",
+                        "${_cycleStats?['longestCycle'] ?? avgCycleLength} days",
+                        Icons.trending_up_rounded,
+                        textColor,
+                        secondaryTextColor,
+                      ),
+                      _buildStatItem(
+                        "Shortest Cycle",
+                        "${_cycleStats?['shortestCycle'] ?? avgCycleLength} days",
+                        Icons.trending_down_rounded,
+                        textColor,
+                        secondaryTextColor,
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -280,10 +435,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     ).animate().fadeIn(duration: 800.ms, delay: 200.ms);
   }
-  
+
   Widget _buildStatItem(
-    String title, 
-    String value, 
+    String title,
+    String value,
     IconData icon,
     Color textColor,
     Color secondaryTextColor,
@@ -325,8 +480,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ],
     );
   }
-  
-  Widget _buildOptionsSection(BuildContext context, bool isDarkMode, Color textColor, Color secondaryTextColor, Color cardColor) {
+
+  Widget _buildOptionsSection(BuildContext context, bool isDarkMode,
+      Color textColor, Color secondaryTextColor, Color cardColor) {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -417,7 +573,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     ).animate().fadeIn(duration: 800.ms, delay: 400.ms);
   }
-  
+
   Widget _buildOptionItem(
     BuildContext context,
     String title,
@@ -494,8 +650,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-  
-  Widget _buildAccountSection(BuildContext context, AuthProvider authProvider, bool isDarkMode, Color textColor, Color secondaryTextColor, Color cardColor) {
+
+  Widget _buildAccountSection(
+      BuildContext context,
+      AuthProvider authProvider,
+      bool isDarkMode,
+      Color textColor,
+      Color secondaryTextColor,
+      Color cardColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -556,7 +718,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   textColor,
                   isDarkMode,
                 ),
-                Divider(color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade300),
+                Divider(
+                    color: isDarkMode
+                        ? Colors.grey.shade600
+                        : Colors.grey.shade300),
                 _buildAccountItem(
                   "Privacy Policy",
                   Icons.privacy_tip_outlined,
@@ -571,7 +736,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   textColor,
                   isDarkMode,
                 ),
-                Divider(color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade300),
+                Divider(
+                    color: isDarkMode
+                        ? Colors.grey.shade600
+                        : Colors.grey.shade300),
                 _buildAccountItem(
                   "Terms of Service",
                   Icons.description_outlined,
@@ -586,7 +754,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   textColor,
                   isDarkMode,
                 ),
-                Divider(color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade300),
+                Divider(
+                    color: isDarkMode
+                        ? Colors.grey.shade600
+                        : Colors.grey.shade300),
                 _buildAccountItem(
                   "Help & Support",
                   Icons.help_outline_rounded,
@@ -601,7 +772,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   textColor,
                   isDarkMode,
                 ),
-                Divider(color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade300),
+                Divider(
+                    color: isDarkMode
+                        ? Colors.grey.shade600
+                        : Colors.grey.shade300),
                 _buildAccountItem(
                   "Log Out",
                   Icons.logout_rounded,
@@ -619,7 +793,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     ).animate().fadeIn(duration: 800.ms, delay: 600.ms);
   }
-  
+
   Widget _buildAccountItem(
     String title,
     IconData icon,
@@ -660,8 +834,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-  
-  void _showLogoutDialog(BuildContext context, AuthProvider authProvider, bool isDarkMode) {
+
+  void _showLogoutDialog(
+      BuildContext context, AuthProvider authProvider, bool isDarkMode) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -710,9 +885,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () async {
               // Store the navigator state before any async operations
               final navigator = Navigator.of(context);
-              
+
               navigator.pop(); // Close dialog first
-              
+
               try {
                 // Show loading indicator
                 showDialog(
@@ -727,23 +902,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 );
-                
+
                 // Perform logout
                 await authProvider.logout();
-                
+
                 // Clear all saved data
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.clear(); // Clear all preferences
-                
+
                 // Print logout success to terminal
                 print('👋 Logout successful!');
                 print('🔐 Auth token cleared');
                 print('📱 User session ended');
                 print('✅ Redirecting to login screen...');
-                
+
                 // Small delay to ensure logout is complete
                 await Future.delayed(const Duration(milliseconds: 500));
-                
+
                 // Navigate to login screen using the stored navigator
                 navigator.pushAndRemoveUntil(
                   MaterialPageRoute(
@@ -751,13 +926,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   (route) => false, // Remove all previous routes
                 );
-                
               } catch (e) {
                 print('❌ Logout error: $e');
-                
+
                 // Pop loading dialog
                 navigator.pop();
-                
+
                 // Show error snackbar
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

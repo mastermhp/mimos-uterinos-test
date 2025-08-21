@@ -46,6 +46,15 @@ class _HomeScreenState extends State<HomeScreen>
   List<dynamic> _doctorConsultations = [];
   Map<String, dynamic>? _aiDashboardInsights;
 
+  // Add cycle prediction variables (same as cycle calendar)
+  List<DateTime> _periodDays = [];
+  List<DateTime> _fertileDays = [];
+  DateTime? _ovulationDay;
+  DateTime? _nextPeriodDate;
+  DateTime? _nextOvulationDate;
+  int _currentCycleLength = 28;
+  int _currentPeriodLength = 5;
+
   bool _isLoadingProfile = true;
   bool _isLoadingStats = true;
   bool _isLoadingCycles = true;
@@ -69,16 +78,31 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _loadData() async {
-    // Load all data at once
-    await Future.wait([
-      _loadUserProfile(),
-      _loadUserStats(),
-      _loadAIData(),
-      _loadCycles(),
-      _loadSymptoms(),
-      _loadDoctorConsultations(),
-      _loadAIDashboardInsights(),
-    ]);
+    try {
+      print('🔄 Starting to load dashboard data...');
+
+      // Load critical data first
+      await Future.wait([
+        _loadUserProfile(),
+        _loadCycles(), // This calculates predictions
+      ]);
+
+      // Load remaining data in parallel
+      await Future.wait([
+        _loadUserStats(),
+        _loadSymptoms(),
+        _loadDoctorConsultations(),
+        _loadAIData(), // Local AI processing
+      ]);
+
+      // Load AI insights last (non-critical)
+      await _loadAIDashboardInsights();
+
+      print('✅ Dashboard data loading completed');
+    } catch (e) {
+      print('❌ Error in main data loading: $e');
+      // Continue with available data
+    }
   }
 
   Future<void> _loadUserProfile() async {
@@ -149,91 +173,11 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  Future<void> _loadAIData() async {
-    setState(() {
-      _isLoadingInsights = true;
-      _isLoadingReminders = true;
-      _isLoadingPredictions = true;
-      _isLoadingRecommendations = true;
-    });
-
-    final userData =
-        Provider.of<UserDataProvider>(context, listen: false).userData;
-
-    if (userData != null) {
-      // Load insights
-      final insights = await _aiService.generateDailyInsights(userData);
-
-      // Load reminders
-      final reminders = await _aiService.generateSmartReminders(userData);
-
-      // Load predictions
-      final predictions = await _aiService.getCalendarPredictions(userData);
-
-      // Load recommendations
-      final recommendations =
-          await _aiService.generatePersonalizedRecommendations(userData);
-
-      print('✅ Loaded recommendations:');
-      print(recommendations);
-
-      setState(() {
-        _aiInsights = insights;
-        _reminders = reminders;
-        _predictions = predictions;
-        _recommendations = recommendations;
-        _isLoadingInsights = false;
-        _isLoadingReminders = false;
-        _isLoadingPredictions = false;
-        _isLoadingRecommendations = false;
-      });
-    } else {
-      setState(() {
-        _aiInsights = [
-          "Complete your profile to get personalized insights.",
-          "Track your cycle to receive tailored recommendations.",
-          "Your data helps us provide better guidance for your health."
-        ];
-        _reminders = [
-          {
-            'title': 'Complete Profile',
-            'description': 'Set up your profile to get personalized reminders',
-            'timing': 'Now',
-            'icon': 'person'
-          }
-        ];
-        _predictions = {
-          'nextPeriod': 'Complete your profile',
-          'ovulation': 'Complete your profile',
-          'fertileWindow': 'Complete your profile',
-        };
-        // Initialize with default recommendations
-        _recommendations = {
-          'nutrition': [
-            'Complete your profile to get personalized nutrition recommendations'
-          ],
-          'exercise': [
-            'Complete your profile to get personalized exercise recommendations'
-          ],
-          'sleep': [
-            'Complete your profile to get personalized sleep recommendations'
-          ],
-          'selfCare': [
-            'Complete your profile to get personalized self-care recommendations'
-          ]
-        };
-        _isLoadingInsights = false;
-        _isLoadingReminders = false;
-        _isLoadingPredictions = false;
-        _isLoadingRecommendations = false;
-      });
-    }
-  }
-
   Future<void> _loadCycles() async {
     try {
       setState(() {
         _isLoadingCycles = true;
+        _isLoadingPredictions = true;
       });
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -243,6 +187,7 @@ class _HomeScreenState extends State<HomeScreen>
         print('❌ Cannot load cycles: User ID is null');
         setState(() {
           _isLoadingCycles = false;
+          _isLoadingPredictions = false;
         });
         return;
       }
@@ -257,6 +202,10 @@ class _HomeScreenState extends State<HomeScreen>
         });
 
         print('✅ Cycles loaded: ${_recentCycles.length} cycles');
+
+        // Calculate cycle predictions (same logic as cycle calendar)
+        _calculateCycleDates();
+
         if (_recentCycles.isNotEmpty) {
           print('📅 Most recent cycle:');
           print('   Start date: ${_recentCycles[0]['startDate']}');
@@ -265,16 +214,97 @@ class _HomeScreenState extends State<HomeScreen>
         }
       } else {
         print('❌ Failed to load cycles');
-        setState(() {
-          _isLoadingCycles = false;
-        });
+        _loadDefaultCycleData();
       }
     } catch (e) {
       print('❌ Error loading cycles: $e');
+      _loadDefaultCycleData();
+    } finally {
       setState(() {
         _isLoadingCycles = false;
+        _isLoadingPredictions = false;
       });
     }
+  }
+
+  void _calculateCycleDates() {
+    if (_recentCycles.isEmpty) {
+      _loadDefaultCycleData();
+      return;
+    }
+
+    // Get the most recent cycle
+    final lastCycle = _recentCycles.first;
+    final startDate = DateTime.parse(lastCycle['startDate']);
+    _currentCycleLength = lastCycle['cycleLength'] ?? 28;
+    _currentPeriodLength = lastCycle['periodLength'] ?? 5;
+
+    // Calculate period days from all cycles
+    _periodDays.clear();
+    for (final cycle in _recentCycles) {
+      final start = DateTime.parse(cycle['startDate']);
+      final periodLength = cycle['periodLength'] ?? 5;
+
+      for (int i = 0; i < periodLength; i++) {
+        _periodDays.add(start.add(Duration(days: i)));
+      }
+    }
+
+    // Calculate next period and ovulation dates
+    _nextPeriodDate = startDate.add(Duration(days: _currentCycleLength));
+    _nextOvulationDate =
+        startDate.add(Duration(days: (_currentCycleLength / 2).round()));
+
+    // Calculate fertile window (5 days before ovulation + ovulation day)
+    _fertileDays.clear();
+    if (_nextOvulationDate != null) {
+      for (int i = 5; i >= 0; i--) {
+        _fertileDays.add(_nextOvulationDate!.subtract(Duration(days: i)));
+      }
+      _ovulationDay = _nextOvulationDate;
+    }
+
+    // Update predictions with calculated data
+    final nextPeriodText = _nextPeriodDate != null
+        ? "Likely to start around ${DateFormat('MMM dd').format(_nextPeriodDate!)}"
+        : "Loading prediction...";
+
+    final ovulationText = _nextOvulationDate != null
+        ? "Expected around ${DateFormat('MMM dd').format(_nextOvulationDate!)}"
+        : "Calculating...";
+
+    final fertileText = _fertileDays.isNotEmpty
+        ? "${DateFormat('MMM dd').format(_fertileDays.first)}-${DateFormat('dd').format(_fertileDays.last)} (${_fertileDays.length} days)"
+        : "Calculating...";
+
+    setState(() {
+      _predictions = {
+        'nextPeriod': nextPeriodText,
+        'ovulation': ovulationText,
+        'fertileWindow': fertileText,
+      };
+    });
+
+    print('📊 Calculated cycle predictions for home page:');
+    print('  Next period: $nextPeriodText');
+    print('  Next ovulation: $ovulationText');
+    print('  Fertile window: $fertileText');
+  }
+
+  void _loadDefaultCycleData() {
+    // Fallback to default data if no cycles available
+    final today = DateTime.now();
+    _nextPeriodDate = today.add(const Duration(days: 28));
+    _nextOvulationDate = today.add(const Duration(days: 14));
+
+    // Set default predictions
+    setState(() {
+      _predictions = {
+        'nextPeriod': 'Track your cycle for predictions',
+        'ovulation': 'Complete your profile first',
+        'fertileWindow': 'Data needed for accurate prediction',
+      };
+    });
   }
 
   Future<void> _loadSymptoms() async {
@@ -377,7 +407,9 @@ class _HomeScreenState extends State<HomeScreen>
       });
 
       print('🔄 Loading AI dashboard insights...');
-      final response = await ApiService.getAIDashboardInsights();
+
+      // Add timeout and retry logic
+      final response = await _loadAIDashboardInsightsWithRetry(maxRetries: 2);
 
       if (response != null && response['success'] == true) {
         setState(() {
@@ -385,79 +417,250 @@ class _HomeScreenState extends State<HomeScreen>
           _isLoadingAIDashboardInsights = false;
         });
 
-        print('✅ AI insights loaded:');
-        print('💡 Insights: ${_aiDashboardInsights?['insights']}');
-        print('📅 Cycle predictions: ${_aiDashboardInsights?['cyclePredictions']}');
-        print('📝 Recommendations: ${_aiDashboardInsights?['recommendations']}');
-
-        // Update the AI insights from backend - use the actual insights field
-        if (_aiDashboardInsights?['insights'] != null) {
-          _aiInsights = [_aiDashboardInsights!['insights'].toString()];
-        }
-
-        // Update predictions
-        if (_aiDashboardInsights?['cyclePredictions'] != null) {
-          _predictions = {
-            'nextPeriod': _aiDashboardInsights?['cyclePredictions'] ?? 'Not available',
-            'ovulation': 'Coming soon',
-            'fertileWindow': 'Coming soon',
-          };
-        }
-        
-        // Parse and update recommendations if available
-        if (_aiDashboardInsights?['recommendations'] != null) {
-          try {
-            final recommendationsList = _aiDashboardInsights!['recommendations'] as List;
-            if (recommendationsList.isNotEmpty) {
-              // Create separate categories for recommendations
-              final nutritionRecs = recommendationsList
-                  .where((item) => item['category'] == 'Nutrition')
-                  .map((item) => item['text'].toString())
-                  .toList();
-                  
-              final exerciseRecs = recommendationsList
-                  .where((item) => item['category'] == 'Exercise')
-                  .map((item) => item['text'].toString())
-                  .toList();
-                  
-              final sleepRecs = recommendationsList
-                  .where((item) => item['category'] == 'Sleep')
-                  .map((item) => item['text'].toString())
-                  .toList();
-                  
-              final selfCareRecs = recommendationsList
-                  .where((item) => item['category'] == 'Self-Care')
-                  .map((item) => item['text'].toString())
-                  .toList();
-
-              // Update the recommendations map
-              _recommendations = {
-                'nutrition': nutritionRecs,
-                'exercise': exerciseRecs,
-                'sleep': sleepRecs,
-                'selfCare': selfCareRecs,
-              };
-              
-              print('✅ Processed recommendations by category:');
-              print('🍎 Nutrition: $nutritionRecs');
-              print('💪 Exercise: $exerciseRecs');
-              print('😴 Sleep: $sleepRecs');
-              print('🧘‍♀️ Self-Care: $selfCareRecs');
-            }
-          } catch (e) {
-            print('❌ Error parsing recommendations: $e');
-          }
-        }
+        print('✅ AI insights loaded successfully');
+        _processAIDashboardData(response);
       } else {
-        print('❌ Failed to load AI dashboard insights');
-        setState(() {
-          _isLoadingAIDashboardInsights = false;
-        });
+        print('❌ Failed to load AI dashboard insights - API response error');
+        _handleAIInsightsError();
       }
     } catch (e) {
       print('❌ Error loading AI dashboard insights: $e');
+      _handleAIInsightsError();
+    }
+  }
+
+  // Add retry mechanism for API calls
+  Future<Map<String, dynamic>?> _loadAIDashboardInsightsWithRetry(
+      {int maxRetries = 2}) async {
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        print('🔄 Attempt $attempt/$maxRetries for AI dashboard insights');
+
+        final response = await ApiService.getAIDashboardInsights(userId: '')
+            .timeout(const Duration(seconds: 10)); // Add timeout
+
+        if (response != null && response['success'] == true) {
+          return response;
+        } else if (attempt < maxRetries) {
+          print('⚠️ Attempt $attempt failed, retrying in 2 seconds...');
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      } catch (e) {
+        print('❌ Attempt $attempt failed: $e');
+        if (attempt < maxRetries) {
+          print('⚠️ Retrying in 2 seconds...');
+          await Future.delayed(const Duration(seconds: 2));
+        } else {
+          rethrow;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Extract AI data processing to separate method
+  void _processAIDashboardData(Map<String, dynamic> response) {
+    try {
+      // Update the AI insights from backend - use the actual insights field
+      if (response['insights'] != null) {
+        _aiInsights = [response['insights'].toString()];
+        print('✅ Processed insights: ${response['insights']}');
+      }
+
+      // Update predictions only if cycle data is not available
+      if (response['cyclePredictions'] != null && _recentCycles.isEmpty) {
+        _predictions = {
+          'nextPeriod': response['cyclePredictions'].toString(),
+          'ovulation': 'Coming soon',
+          'fertileWindow': 'Coming soon',
+        };
+        print('✅ Updated predictions from AI');
+      }
+
+      // Parse and update recommendations if available
+      if (response['recommendations'] != null) {
+        _processRecommendations(response['recommendations']);
+      } else {
+        print('⚠️ No recommendations in response, using fallback');
+        _setFallbackRecommendations();
+      }
+    } catch (e) {
+      print('❌ Error processing AI dashboard data: $e');
+      _setFallbackRecommendations();
+    }
+  }
+
+  // Extract recommendations processing
+  void _processRecommendations(dynamic recommendationsData) {
+    try {
+      final recommendationsList = recommendationsData as List;
+      if (recommendationsList.isNotEmpty) {
+        // Create separate categories for recommendations
+        final nutritionRecs = recommendationsList
+            .where((item) => item['category'] == 'Nutrition')
+            .map((item) => item['text'].toString())
+            .toList();
+
+        final exerciseRecs = recommendationsList
+            .where((item) => item['category'] == 'Exercise')
+            .map((item) => item['text'].toString())
+            .toList();
+
+        final sleepRecs = recommendationsList
+            .where((item) => item['category'] == 'Sleep')
+            .map((item) => item['text'].toString())
+            .toList();
+
+        final selfCareRecs = recommendationsList
+            .where((item) => item['category'] == 'Self-Care')
+            .map((item) => item['text'].toString())
+            .toList();
+
+        // Update the recommendations map
+        _recommendations = {
+          'nutrition': nutritionRecs.isNotEmpty
+              ? nutritionRecs
+              : ['Focus on iron-rich foods during menstruation'],
+          'exercise': exerciseRecs.isNotEmpty
+              ? exerciseRecs
+              : ['Light yoga or walking can help with cramps'],
+          'sleep': sleepRecs.isNotEmpty
+              ? sleepRecs
+              : ['Aim for 7-8 hours of quality sleep'],
+          'selfCare': selfCareRecs.isNotEmpty
+              ? selfCareRecs
+              : ['Practice relaxation techniques'],
+        };
+
+        print('✅ Successfully processed recommendations by category');
+      } else {
+        print('⚠️ Empty recommendations list, using fallback');
+        _setFallbackRecommendations();
+      }
+    } catch (e) {
+      print('❌ Error parsing recommendations: $e');
+      _setFallbackRecommendations();
+    }
+  }
+
+  void _handleAIInsightsError() {
+    setState(() {
+      _isLoadingAIDashboardInsights = false;
+
+      // Set fallback data when API fails
+      if (_aiInsights.isEmpty) {
+        _aiInsights = [
+          "Welcome to Mimos Uterinos! Track your cycle to get personalized insights.",
+          "Regular tracking helps us provide better recommendations for your health.",
+          "AI insights are temporarily unavailable, but you can still track your cycle."
+        ];
+      }
+
+      // Only set fallback predictions if no cycle data is available
+      if (_predictions.isEmpty && _recentCycles.isEmpty) {
+        _predictions = {
+          'nextPeriod': 'Track your cycle for predictions',
+          'ovulation': 'Data needed for prediction',
+          'fertileWindow': 'Complete your profile first',
+        };
+      }
+
+      _setFallbackRecommendations();
+    });
+  }
+
+  void _setFallbackRecommendations() {
+    _recommendations = {
+      'nutrition': [
+        'Eat iron-rich foods like spinach and lean meats',
+        'Stay hydrated with plenty of water',
+        'Include calcium-rich foods in your diet',
+      ],
+      'exercise': [
+        'Try gentle yoga or stretching',
+        'Take a 10-15 minute walk daily',
+        'Avoid intense workouts during heavy flow days',
+      ],
+      'sleep': [
+        'Maintain a regular sleep schedule',
+        'Aim for 7-8 hours of sleep nightly',
+        'Create a calming bedtime routine',
+      ],
+      'selfCare': [
+        'Use a heating pad for cramps',
+        'Practice deep breathing exercises',
+        'Take warm baths to relax muscles',
+      ],
+    };
+  }
+
+  Future<void> _loadAIData() async {
+    setState(() {
+      _isLoadingInsights = true;
+      _isLoadingReminders = true;
+      _isLoadingRecommendations = true;
+    });
+
+    final userData =
+        Provider.of<UserDataProvider>(context, listen: false).userData;
+
+    if (userData != null) {
+      // Load insights
+      final insights = await _aiService.generateDailyInsights(userData);
+
+      // Load reminders
+      final reminders = await _aiService.generateSmartReminders(userData);
+
+      // Load recommendations
+      final recommendations =
+          await _aiService.generatePersonalizedRecommendations(userData);
+
+      print('✅ Loaded recommendations:');
+      print(recommendations);
+
       setState(() {
-        _isLoadingAIDashboardInsights = false;
+        _aiInsights = insights;
+        _reminders = reminders;
+        _recommendations = recommendations;
+        _isLoadingInsights = false;
+        _isLoadingReminders = false;
+        _isLoadingRecommendations = false;
+      });
+    } else {
+      setState(() {
+        _aiInsights = [
+          "Complete your profile to get personalized insights.",
+          "Track your cycle to receive tailored recommendations.",
+          "Your data helps us provide better guidance for your health."
+        ];
+        _reminders = [
+          {
+            'title': 'Complete Profile',
+            'description': 'Set up your profile to get personalized reminders',
+            'timing': 'Now',
+            'icon': 'person'
+          }
+        ];
+        // Don't override _predictions here - let cycle data handle it
+
+        // Initialize with default recommendations
+        _recommendations = {
+          'nutrition': [
+            'Complete your profile to get personalized nutrition recommendations'
+          ],
+          'exercise': [
+            'Complete your profile to get personalized exercise recommendations'
+          ],
+          'sleep': [
+            'Complete your profile to get personalized sleep recommendations'
+          ],
+          'selfCare': [
+            'Complete your profile to get personalized self-care recommendations'
+          ]
+        };
+        _isLoadingInsights = false;
+        _isLoadingReminders = false;
+        _isLoadingRecommendations = false;
       });
     }
   }
@@ -492,7 +695,7 @@ class _HomeScreenState extends State<HomeScreen>
         onRefresh: _loadData,
         child: CustomScrollView(
           slivers: [
-            // App Bar
+            // App Bar (keep only this one)
             SliverAppBar(
               expandedHeight: 400, // Increased to accommodate calendar strip
               floating: false,
@@ -1279,14 +1482,16 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildPredictionsCard() {
+    // Use calculated predictions from cycle data
     String nextPeriodText = _predictions['nextPeriod'] ?? 'Unable to predict';
     String ovulationText = _predictions['ovulation'] ?? 'Unable to predict';
     String fertileWindowText =
         _predictions['fertileWindow'] ?? 'Unable to predict';
 
-    // Use AI dashboard insights if available
+    // Override with AI dashboard insights only if cycle data is not available
     if (_aiDashboardInsights != null &&
-        _aiDashboardInsights!['cyclePredictions'] != null) {
+        _aiDashboardInsights!['cyclePredictions'] != null &&
+        _recentCycles.isEmpty) {
       nextPeriodText = _aiDashboardInsights!['cyclePredictions'].toString();
     }
 
@@ -1339,7 +1544,7 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
           const SizedBox(height: 20),
-          if (_isLoadingPredictions || _isLoadingAIDashboardInsights)
+          if (_isLoadingPredictions)
             const Center(
               child: CircularProgressIndicator(
                 color: Colors.white,
@@ -1374,18 +1579,20 @@ class _HomeScreenState extends State<HomeScreen>
               color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.info_outline,
                   color: Colors.white,
                   size: 16,
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    "Predictions improve with more cycle data. Log your periods regularly for better accuracy.",
-                    style: TextStyle(
+                    _recentCycles.isNotEmpty
+                        ? "Predictions based on your ${_recentCycles.length} recorded cycle${_recentCycles.length > 1 ? 's' : ''}. Keep logging for better accuracy."
+                        : "Predictions improve with more cycle data. Log your periods regularly for better accuracy.",
+                    style: const TextStyle(
                       fontSize: 12,
                       color: Colors.white,
                     ),
@@ -1451,11 +1658,14 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildInsightsCard() {
-    // Use insights from API if available - specifically the 'insights' field
+    // Determine the source and content of insights
     String insightText = "Complete your profile to get personalized insights.";
-    
-    if (_aiDashboardInsights != null && _aiDashboardInsights!['insights'] != null) {
+    bool isFromAPI = false;
+
+    if (_aiDashboardInsights != null &&
+        _aiDashboardInsights!['insights'] != null) {
       insightText = _aiDashboardInsights!['insights'].toString();
+      isFromAPI = true;
     } else if (_aiInsights.isNotEmpty) {
       insightText = _aiInsights.join("\n\n");
     }
@@ -1485,8 +1695,8 @@ class _HomeScreenState extends State<HomeScreen>
                   color: AppColors.primary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.auto_awesome,
+                child: Icon(
+                  isFromAPI ? Icons.auto_awesome : Icons.lightbulb_outline,
                   color: AppColors.primary,
                   size: 24,
                 ),
@@ -1500,10 +1710,33 @@ class _HomeScreenState extends State<HomeScreen>
                   color: AppColors.textPrimary,
                 ),
               ),
+              const Spacer(),
+              // Show status indicator
+              if (_isLoadingAIDashboardInsights)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    color: AppColors.primary,
+                    strokeWidth: 2,
+                  ),
+                )
+              else if (!isFromAPI && _aiDashboardInsights == null)
+                Icon(
+                  Icons.wifi_off,
+                  color: Colors.orange[600],
+                  size: 16,
+                )
+              else if (isFromAPI)
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.green[600],
+                  size: 16,
+                ),
             ],
           ),
           const SizedBox(height: 16),
-          if (_isLoadingInsights || _isLoadingAIDashboardInsights)
+          if (_isLoadingInsights && _isLoadingAIDashboardInsights)
             const Center(
               child: CircularProgressIndicator(
                 color: AppColors.primary,
@@ -1519,6 +1752,64 @@ class _HomeScreenState extends State<HomeScreen>
                   color: AppColors.textPrimary,
                   height: 1.4,
                 ),
+              ),
+            ),
+
+          // Show status message
+          if (!_isLoadingAIDashboardInsights && _aiDashboardInsights == null)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.orange[700],
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "AI insights temporarily unavailable. Using local recommendations. Pull down to refresh.",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange[700],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (isFromAPI)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.cloud_done,
+                    color: Colors.green[700],
+                    size: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    "AI insights updated",
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.green[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
         ],

@@ -69,7 +69,7 @@ class AuthService {
     }
   }
 
-  // Login user - Update to handle similar response structure
+  // Login user - UPDATED
   Future<bool> login({
     required String email,
     required String password,
@@ -78,34 +78,50 @@ class AuthService {
       _isLoading = true;
       _error = null;
 
+      print('🔄 AuthService: Starting login...');
+
       final response = await ApiService.login(
         email: email,
         password: password,
       );
 
       if (response != null && response['success'] == true) {
+        print('✅ AuthService: Login successful');
+
         // Extract data from response structure
         final responseData = response['data'];
         final userData = responseData['user'];
+        final token = responseData['token'];
 
         if (userData != null) {
           _currentUser = UserAuth.fromApiResponse(userData);
+          print('✅ AuthService: User object created - ${_currentUser?.name}');
 
-          // Save user data locally
+          // Save user data and authentication status locally
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('current_user_id', _currentUser!.id);
           await prefs.setBool('is_authenticated', true);
+
+          // Token should already be saved by ApiService, but let's ensure it
+          if (token != null) {
+            await prefs.setString('auth_token', token);
+            print('✅ AuthService: Token saved locally');
+          }
 
           return true;
         }
       }
 
+      print(
+          '❌ AuthService: Login failed - ${response?['message'] ?? 'Unknown error'}');
       _error = response?['message'] ?? 'Login failed';
       return false;
     } on ApiException catch (e) {
+      print('❌ AuthService: API error - ${e.message}');
       _error = e.message;
       return false;
     } catch (e) {
+      print('❌ AuthService: Unexpected error - $e');
       _error = 'Login failed: ${e.toString()}';
       return false;
     } finally {
@@ -123,26 +139,57 @@ class AuthService {
     await prefs.setBool('is_authenticated', false);
   }
 
-  // Check if user is authenticated
+  // Check if user is authenticated - UPDATED
   Future<bool> checkAuth() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final isAuthenticated = prefs.getBool('is_authenticated') ?? false;
       final token = prefs.getString('auth_token');
+      final userId = prefs.getString('current_user_id');
 
-      if (!isAuthenticated || token == null) {
+      if (kDebugMode) {
+        print('🔍 AuthService.checkAuth:');
+        print('  - isAuthenticated: $isAuthenticated');
+        print('  - hasToken: ${token != null}');
+        print('  - hasUserId: ${userId != null}');
+      }
+
+      if (!isAuthenticated || token == null || userId == null) {
+        if (kDebugMode) {
+          print('❌ AuthService: Missing authentication data');
+        }
         return false;
       }
 
-      // Try to get user profile from server
-      final profileData = await ApiService.getUserProfile();
-      if (profileData != null && profileData['user'] != null) {
-        _currentUser = UserAuth.fromApiResponse(profileData['user']);
-        return true;
+      // Try to get user profile from server to validate token
+      try {
+        final profileData = await ApiService.getUserProfile();
+        if (profileData != null &&
+            profileData['success'] == true &&
+            profileData['data'] != null) {
+          _currentUser = UserAuth.fromApiResponse(profileData['data']);
+          if (kDebugMode) {
+            print(
+                '✅ AuthService: User profile validated - ${_currentUser?.name}');
+          }
+          return true;
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ AuthService: Profile validation failed: $e');
+        }
+        // Token might be invalid, clear auth data
+        await prefs.setBool('is_authenticated', false);
+        await prefs.remove('auth_token');
+        await prefs.remove('current_user_id');
+        return false;
       }
 
       return false;
     } catch (e) {
+      if (kDebugMode) {
+        print('❌ AuthService.checkAuth error: $e');
+      }
       return false;
     }
   }

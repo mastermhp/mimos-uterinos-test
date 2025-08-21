@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:menstrual_health_ai/models/user_data.dart';
+import 'package:menstrual_health_ai/services/api_service.dart';
 import 'package:menstrual_health_ai/services/auth_service.dart';
 import 'package:menstrual_health_ai/models/user_auth.dart';
 import 'package:menstrual_health_ai/utils/secure_storage.dart';
@@ -98,14 +99,14 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Login method
+  // Login method - UPDATED
   Future<bool> login({required String email, required String password}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      // Use actual auth service or mock response
+      // Use actual auth service
       final result = await _authService.login(email: email, password: password);
 
       if (result && _authService.currentUser != null) {
@@ -114,76 +115,26 @@ class AuthProvider with ChangeNotifier {
           id: _authService.currentUser!.id,
           name: _authService.currentUser!.name,
           email: _authService.currentUser!.email,
-          profileCompleted:
-              true, // Set default value since UserAuth doesn't have this field
-          isPremium: false, // Set based on your auth service response
+          profileCompleted: true,
+          isPremium: false,
         );
 
-        // Get token from auth service (you'll need to add this to your auth service)
-        _token = 'auth_token_${DateTime.now().millisecondsSinceEpoch}';
+        // Get the actual token from SharedPreferences (saved by ApiService)
+        final prefs = await SharedPreferences.getInstance();
+        _token = prefs.getString('auth_token');
 
-        await _saveUserDataToStorage();
-
-        _isLoading = false;
-        notifyListeners();
-        return true;
-      } else {
-        // Fallback to mock data if auth service fails
-        await Future.delayed(const Duration(seconds: 2));
-
-        // Mock successful login response - Replace with actual API response
-        final mockResponse = {
-          'success': true,
-          'token': 'mock_jwt_token_${DateTime.now().millisecondsSinceEpoch}',
-          'user': {
-            'id': '1',
-            'name': 'Maria Silva',
-            'email': email,
-            'phone': '+1234567890',
-            'dateOfBirth': '1995-03-15',
-            'profileCompleted': true,
-            'isPremium': false,
-            'cycleData': {
-              'lastPeriodDate': '2025-08-01',
-              'cycleLength': 28,
-              'periodLength': 5,
-              'symptoms': ['cramps', 'fatigue'],
-              'mood': 'normal'
-            },
-            'preferences': {
-              'notifications': true,
-              'reminders': true,
-              'theme': 'light',
-              'language': 'en'
-            },
-            'healthData': {
-              'weight': 65.0,
-              'height': 165.0,
-              'bloodType': 'O+',
-              'medications': [],
-              'allergies': []
-            }
-          }
-        };
-
-        if (mockResponse['success'] == true) {
-          _token = mockResponse['token'] as String;
-          _currentUser =
-              User.fromJson(mockResponse['user'] as Map<String, dynamic>);
-
-          // Save to secure storage
+        if (_token != null) {
           await _saveUserDataToStorage();
-
           _isLoading = false;
           notifyListeners();
           return true;
-        } else {
-          _error = 'Invalid credentials';
-          _isLoading = false;
-          notifyListeners();
-          return false;
         }
       }
+
+      _error = _authService.error ?? 'Login failed';
+      _isLoading = false;
+      notifyListeners();
+      return false;
     } catch (e) {
       _error = e.toString();
       _isLoading = false;
@@ -252,20 +203,65 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Check authentication status
+  // Check authentication status - UPDATED
   Future<bool> checkAuth() async {
     try {
-      final result = await _authService.checkAuth();
-      if (result) {
-        // Load user data if auth is valid
-        await loadUserFromStorage();
+      // First, try to load from secure storage
+      await loadUserFromStorage();
+
+      // If we have user data and token locally, verify with server
+      if (_currentUser != null && _token != null) {
+        if (kDebugMode) {
+          print('✅ Found local auth data, verifying with server...');
+        }
+
+        // Verify token is still valid by making an API call
+        try {
+          final response = await ApiService.getUserProfile();
+          if (response != null && response['success'] == true) {
+            if (kDebugMode) {
+              print('✅ Token is valid, user authenticated');
+            }
+            notifyListeners();
+            return true;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Token validation failed: $e');
+          }
+        }
       }
+
+      // If no local data or validation failed, check with auth service
+      final result = await _authService.checkAuth();
+      if (result && _authService.currentUser != null) {
+        _currentUser = User(
+          id: _authService.currentUser!.id,
+          name: _authService.currentUser!.name,
+          email: _authService.currentUser!.email,
+          profileCompleted: true,
+          isPremium: false,
+        );
+
+        // Get token from prefs
+        final prefs = await SharedPreferences.getInstance();
+        _token = prefs.getString('auth_token');
+
+        if (_token != null) {
+          await _saveUserDataToStorage();
+        }
+      }
+
       notifyListeners();
       return result;
     } catch (e) {
       if (kDebugMode) {
         print('⚠️ Error checking auth: $e');
       }
+      // Clear invalid data
+      _currentUser = null;
+      _token = null;
+      notifyListeners();
       return false;
     }
   }
