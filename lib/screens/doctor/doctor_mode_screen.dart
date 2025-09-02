@@ -326,12 +326,20 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
         throw Exception('User not logged in');
       }
 
+      // Debug: Test endpoints first (remove this in production)
+      print('🔍 Testing AI consultation endpoints...');
+      await ApiService.testAIConsultationEndpoint();
+
       final response = await ApiService.createAIDoctorConsultation(
         userId: currentUser.id,
         symptoms: _symptomsController.text.trim(),
         severity: _severity.toInt(),
-        duration: _durationController.text.trim(),
-        additionalNotes: _notesController.text.trim(),
+        duration: _durationController.text.trim().isEmpty
+            ? null
+            : _durationController.text.trim(),
+        additionalNotes: _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
       );
 
       if (response != null && response['success'] == true) {
@@ -359,6 +367,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
         throw Exception(response?['message'] ?? 'Unknown error');
       }
     } catch (e) {
+      print('❌ AI consultation error details: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to get AI consultation: $e'),
@@ -1678,7 +1687,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        consultation['symptoms'] ?? 'Not specified',
+                        consultation['symptoms']?.toString() ?? 'Not specified', // Fix: Convert to string
                         style: TextStyles.body2,
                       ),
                     ],
@@ -1697,9 +1706,9 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      "${consultation['severity'] ?? 'N/A'}/10",
+                      "${consultation['severity']?.toString() ?? 'N/A'}/10", // Fix: Convert to string
                       style: TextStyles.body2.copyWith(
-                        color: _getSeverityColor(consultation['severity'] ?? 0),
+                        color: _getSeverityColor(consultation['severity'] as int? ?? 0),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -1720,7 +1729,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                consultation['duration'],
+                consultation['duration']?.toString() ?? '', // Fix: Convert to string
                 style: TextStyles.body2,
               ),
             ],
@@ -1738,7 +1747,7 @@ class _DoctorModeScreenState extends State<DoctorModeScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                consultation['additionalNotes'],
+                consultation['additionalNotes']?.toString() ?? '', // Fix: Convert to string
                 style: TextStyles.body2,
               ),
             ],

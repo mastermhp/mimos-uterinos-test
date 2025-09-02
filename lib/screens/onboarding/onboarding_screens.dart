@@ -379,39 +379,51 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 16),
-          const Text(
+          Text(
             "What's your name?",
-            style: TextStyle(
-              fontSize: 24,
+            style: const TextStyle(
+              fontSize: 28,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 40),
-          TextField(
-            controller: TextEditingController(text: _name),
-            onChanged: (value) {
-              setState(() {
-                _name = value;
-              });
-            },
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w500,
-              color: Colors.black87,
-            ),
-            decoration: const InputDecoration(
-              hintText: "Isabella",
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+          const SizedBox(height: 60),
+          Container(
+            width: double.infinity,
+            child: TextField(
+              controller: TextEditingController(text: _name),
+              onChanged: (value) {
+                setState(() {
+                  _name = value;
+                });
+              },
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.center,
+              decoration: const InputDecoration(
+                hintText: "Isabella",
+                hintStyle: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w300,
+                  color: Colors.grey,
+                ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ),
-          const Divider(
-            color: Colors.grey,
-            thickness: 1,
+          const SizedBox(height: 20),
+          Container(
+            width: 200,
+            height: 2,
+            color: Colors.grey.shade300,
           ),
         ],
       ),
@@ -422,18 +434,19 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 16),
           const Text(
             "How old are you?",
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 80),
 
           // Age display
           Center(
@@ -444,10 +457,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                 GestureDetector(
                   onTap: () {
                     if (_age > 12) {
-                      // Minimum age
                       setState(() {
                         _age--;
-                        // Update birthdate to match age
                         _birthdate = DateTime(
                           DateTime.now().year - _age,
                           _birthdate.month,
@@ -457,8 +468,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                     }
                   },
                   child: Container(
-                    width: 48,
-                    height: 48,
+                    width: 50,
+                    height: 50,
                     decoration: BoxDecoration(
                       color: Colors.grey.shade200,
                       shape: BoxShape.circle,
@@ -466,18 +477,19 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                     child: const Icon(
                       Icons.remove,
                       color: Colors.black87,
+                      size: 24,
                     ),
                   ),
                 ),
 
                 // Age value
                 Container(
-                  width: 120,
-                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  width: 140,
+                  margin: const EdgeInsets.symmetric(horizontal: 30),
                   child: Text(
                     "$_age",
                     style: const TextStyle(
-                      fontSize: 48,
+                      fontSize: 64,
                       fontWeight: FontWeight.w600,
                       color: Colors.black87,
                     ),
@@ -489,10 +501,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                 GestureDetector(
                   onTap: () {
                     if (_age < 70) {
-                      // Maximum age
                       setState(() {
                         _age++;
-                        // Update birthdate to match age
                         _birthdate = DateTime(
                           DateTime.now().year - _age,
                           _birthdate.month,
@@ -502,8 +512,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                     }
                   },
                   child: Container(
-                    width: 48,
-                    height: 48,
+                    width: 50,
+                    height: 50,
                     decoration: const BoxDecoration(
                       color: AppColors.primary,
                       shape: BoxShape.circle,
@@ -511,6 +521,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                     child: const Icon(
                       Icons.add,
                       color: Colors.white,
+                      size: 24,
                     ),
                   ),
                 ),
@@ -518,28 +529,27 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ),
           ),
 
-          const SizedBox(height: 40),
+          const SizedBox(height: 60),
 
           // Age slider
           SliderTheme(
             data: SliderThemeData(
-              trackHeight: 8,
+              trackHeight: 6,
               activeTrackColor: AppColors.primary,
               inactiveTrackColor: Colors.grey.shade200,
               thumbColor: AppColors.primary,
               thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 12,
+                enabledThumbRadius: 14,
               ),
             ),
             child: Slider(
               value: _age.toDouble(),
-              min: 12, // Minimum age
-              max: 70, // Maximum age
-              divisions: 58, // (70-12)
+              min: 12,
+              max: 70,
+              divisions: 58,
               onChanged: (value) {
                 setState(() {
                   _age = value.round();
-                  // Update birthdate to match age
                   _birthdate = DateTime(
                     DateTime.now().year - _age,
                     _birthdate.month,
@@ -550,6 +560,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ),
           ),
 
+          const SizedBox(height: 20),
+
           // Age range labels
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
@@ -559,59 +571,29 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                 Text(
                   "12",
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 14,
                     color: Colors.grey,
                   ),
                 ),
                 Text(
                   "30",
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 14,
                     color: Colors.grey,
                   ),
                 ),
                 Text(
                   "50",
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 14,
                     color: Colors.grey,
                   ),
                 ),
                 Text(
                   "70",
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 14,
                     color: Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 40),
-
-          // Info text
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  color: Colors.blue.shade700,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    "Your age helps us provide more accurate cycle predictions and health insights.",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.blue.shade700,
-                    ),
                   ),
                 ),
               ],
@@ -626,18 +608,19 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 16),
           const Text(
             "When is your birthday?",
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 80),
 
           // Date picker
           Row(
@@ -649,11 +632,12 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                   const Text(
                     "Month",
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 16,
                       color: Colors.grey,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   _buildDatePickerColumn(
                     items: List.generate(
                         12, (index) => (index + 1).toString().padLeft(2, '0')),
@@ -665,7 +649,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                           int.parse(value),
                           _birthdate.day,
                         );
-                        // Update age based on birthdate
                         _age = DateTime.now().year - _birthdate.year;
                         if (DateTime.now().month < _birthdate.month ||
                             (DateTime.now().month == _birthdate.month &&
@@ -684,11 +667,12 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                   const Text(
                     "Day",
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 16,
                       color: Colors.grey,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   _buildDatePickerColumn(
                     items: List.generate(
                         31, (index) => (index + 1).toString().padLeft(2, '0')),
@@ -700,7 +684,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                           _birthdate.month,
                           int.parse(value),
                         );
-                        // Update age based on birthdate
                         _age = DateTime.now().year - _birthdate.year;
                         if (DateTime.now().month < _birthdate.month ||
                             (DateTime.now().month == _birthdate.month &&
@@ -719,11 +702,12 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                   const Text(
                     "Year",
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 16,
                       color: Colors.grey,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   _buildDatePickerColumn(
                     items: List.generate(
                         50,
@@ -737,7 +721,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                           _birthdate.month,
                           _birthdate.day,
                         );
-                        // Update age based on birthdate
                         _age = DateTime.now().year - _birthdate.year;
                         if (DateTime.now().month < _birthdate.month ||
                             (DateTime.now().month == _birthdate.month &&
@@ -752,20 +735,20 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ],
           ),
 
-          const SizedBox(height: 40),
+          const SizedBox(height: 60),
 
           // Display calculated age
           Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               decoration: BoxDecoration(
                 color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(25),
               ),
               child: Text(
                 "You are $_age years old",
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: AppColors.primary,
                 ),
@@ -781,18 +764,19 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 16),
           const Text(
             "What's your weight?",
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 80),
 
           // Weight display
           Center(
@@ -803,18 +787,18 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                 Text(
                   _weight.toStringAsFixed(1),
                   style: const TextStyle(
-                    fontSize: 48,
+                    fontSize: 64,
                     fontWeight: FontWeight.w600,
                     color: Colors.black87,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
+                  padding: EdgeInsets.only(bottom: 12),
                   child: Text(
                     "kg",
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 24,
                       color: Colors.black87,
                     ),
                   ),
@@ -823,23 +807,23 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ),
           ),
 
-          const SizedBox(height: 40),
+          const SizedBox(height: 80),
 
           // Weight slider
           Column(
             children: [
               SliderTheme(
                 data: SliderThemeData(
-                  trackHeight: 1,
+                  trackHeight: 6,
                   activeTrackColor: AppColors.primary,
                   inactiveTrackColor: Colors.grey.shade300,
                   thumbColor: AppColors.primary,
                   thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 12,
+                    enabledThumbRadius: 14,
                     elevation: 0,
                   ),
                   overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 20,
+                    overlayRadius: 24,
                   ),
                 ),
                 child: Slider(
@@ -854,6 +838,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                 ),
               ),
 
+              const SizedBox(height: 16),
+
               // Slider labels
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
@@ -863,35 +849,35 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                     Text(
                       "30",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
                       "60",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
                       "90",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
                       "120",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
                       "150",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
@@ -909,18 +895,19 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 16),
           const Text(
             "How tall are you?",
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 80),
 
           // Height display
           Center(
@@ -931,18 +918,18 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                 Text(
                   _height.toStringAsFixed(1),
                   style: const TextStyle(
-                    fontSize: 48,
+                    fontSize: 64,
                     fontWeight: FontWeight.w600,
                     color: Colors.black87,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
+                  padding: EdgeInsets.only(bottom: 12),
                   child: Text(
                     "cm",
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 24,
                       color: Colors.black87,
                     ),
                   ),
@@ -951,23 +938,23 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ),
           ),
 
-          const SizedBox(height: 40),
+          const SizedBox(height: 80),
 
           // Height slider
           Column(
             children: [
               SliderTheme(
                 data: SliderThemeData(
-                  trackHeight: 1,
+                  trackHeight: 6,
                   activeTrackColor: AppColors.primary,
                   inactiveTrackColor: Colors.grey.shade300,
                   thumbColor: AppColors.primary,
                   thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 12,
+                    enabledThumbRadius: 14,
                     elevation: 0,
                   ),
                   overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 20,
+                    overlayRadius: 24,
                   ),
                 ),
                 child: Slider(
@@ -982,6 +969,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                 ),
               ),
 
+              const SizedBox(height: 16),
+
               // Slider labels
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
@@ -991,35 +980,35 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                     Text(
                       "120",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
                       "140",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
                       "160",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
                       "180",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
                       "200",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
@@ -1037,24 +1026,61 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 16),
           const Text(
-            "How long does your period usually last?",
+            "How long does your\nperiod usually last?",
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 80),
 
-          // Period length options
-          Expanded(
-            child: ListView.builder(
-              itemCount: 6,
-              itemBuilder: (context, index) {
+          // Period length display
+          Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  "$_periodLength",
+                  style: const TextStyle(
+                    fontSize: 64,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    "days",
+                    style: TextStyle(
+                      fontSize: 24,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 80),
+
+          // Period length options (simplified grid)
+          SizedBox(
+            height: 200,
+            child: GridView.count(
+              crossAxisCount: 3,
+              childAspectRatio: 1.5,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              shrinkWrap: true,
+              children: List.generate(6, (index) {
                 final days = index + 2; // 2-7 days
                 return GestureDetector(
                   onTap: () {
@@ -1063,13 +1089,11 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                     });
                   },
                   child: Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
                       color: _periodLength == days
                           ? AppColors.primary
                           : Colors.white,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: _periodLength == days
                             ? AppColors.primary
@@ -1078,35 +1102,20 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                       ),
                     ),
                     child: Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            "$days",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: _periodLength == days
-                                  ? Colors.white
-                                  : Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            "days",
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: _periodLength == days
-                                  ? Colors.white
-                                  : Colors.grey,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        "$days",
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          color: _periodLength == days
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
                       ),
                     ),
                   ),
                 );
-              },
+              }),
             ),
           ),
         ],
@@ -1115,10 +1124,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
   }
 
   Widget _buildCycleLengthPage() {
-    // Define cycle length ranges based on regularity
     List<int> cycleDays = List.generate(8, (index) => index + 24); // 24-31 days
 
-    // Update selected days when regularity changes
     if (_isRegularCycle &&
         !_selectedCycleDays.any((day) => day >= 26 && day <= 28)) {
       _selectedCycleDays = [26, 27, 28];
@@ -1127,7 +1134,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
       _selectedCycleDays = [28, 29, 30];
     }
 
-    // Calculate range text
     String rangeText = "";
     if (_selectedCycleDays.isNotEmpty) {
       int minDay = _selectedCycleDays.reduce((a, b) => a < b ? a : b);
@@ -1138,18 +1144,19 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 16),
           const Text(
-            "How long does your cycle usually last?",
+            "How long does your\ncycle usually last?",
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 40),
 
           // Regular/Irregular toggle
           Row(
@@ -1162,7 +1169,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                   setState(() {
                     if (!_isRegularCycle) {
                       _isRegularCycle = true;
-                      // Update selected days for regular cycle
                       _selectedCycleDays = [26, 27, 28];
                     }
                   });
@@ -1176,7 +1182,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                   setState(() {
                     if (_isRegularCycle) {
                       _isRegularCycle = false;
-                      // Update selected days for irregular cycle
                       _selectedCycleDays = [28, 29, 30];
                     }
                   });
@@ -1185,24 +1190,36 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
             ],
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 60),
 
-          // Cycle length options
-          Expanded(
+          // Display selected range prominently
+          Text(
+            rangeText,
+            style: const TextStyle(
+              fontSize: 48,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primary,
+            ),
+          ),
+
+          const SizedBox(height: 60),
+
+          // Cycle length options grid
+          SizedBox(
+            height: 200,
             child: GridView.count(
-              crossAxisCount: 3,
-              childAspectRatio: 1.5,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
+              crossAxisCount: 4,
+              childAspectRatio: 1.2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              shrinkWrap: true,
               children: cycleDays.map((day) {
                 final isSelected = _selectedCycleDays.contains(day);
 
                 return GestureDetector(
                   onTap: () {
                     setState(() {
-                      // Toggle selection
                       if (isSelected) {
-                        // Don't allow deselecting if it's the last selected day
                         if (_selectedCycleDays.length > 1) {
                           _selectedCycleDays.remove(day);
                         }
@@ -1210,7 +1227,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                         _selectedCycleDays.add(day);
                       }
 
-                      // Update cycle length based on average of selected days
                       if (_selectedCycleDays.isNotEmpty) {
                         _cycleLength =
                             _selectedCycleDays.reduce((a, b) => a + b) ~/
@@ -1223,7 +1239,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                       color: isSelected
                           ? AppColors.primary.withOpacity(0.1)
                           : Colors.white,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isSelected
                             ? AppColors.primary
@@ -1235,7 +1251,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
                       child: Text(
                         "$day",
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.w600,
                           color:
                               isSelected ? AppColors.primary : Colors.black87,
@@ -1247,31 +1263,95 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
               }).toList(),
             ),
           ),
+        ],
+      ),
+    );
+  }
 
-          // Selected range
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(16),
+  Widget _buildLastPeriodPage() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Text(
+            "When was your\nlast period?",
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            "This helps us predict your next period\nand fertile window accurately.",
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.black54,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 40),
+
+          // Calendar for period selection
+          Expanded(
+            child: TableCalendar(
+              firstDay: DateTime.now().subtract(const Duration(days: 90)),
+              lastDay: DateTime.now(),
+              focusedDay: _lastPeriodDate,
+              selectedDayPredicate: (day) {
+                return isSameDay(_lastPeriodDate, day);
+              },
+              onDaySelected: (selectedDay, focusedDay) {
+                setState(() {
+                  _lastPeriodDate = selectedDay;
+                });
+              },
+              calendarStyle: CalendarStyle(
+                selectedDecoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                todayDecoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+                defaultTextStyle: const TextStyle(fontSize: 16),
+                weekendTextStyle: const TextStyle(fontSize: 16),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    rangeText,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
+              headerStyle: const HeaderStyle(
+                formatButtonVisible: false,
+                titleCentered: true,
+                titleTextStyle: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
+
+          // Selected date display
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Text(
+                "Selected: ${DateFormat('MMM dd, yyyy').format(_lastPeriodDate)}",
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
         ],
       ),
     );
@@ -1653,115 +1733,6 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     );
   }
 
-  Widget _buildLastPeriodPage() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 16),
-          const Text(
-            "When was your last period?",
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "This helps us predict your next period and fertile window accurately.",
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.black54,
-            ),
-          ),
-          const SizedBox(height: 40),
-
-          // Calendar for period selection
-          Expanded(
-            child: TableCalendar(
-              firstDay: DateTime.now().subtract(const Duration(days: 90)),
-              lastDay: DateTime.now(),
-              focusedDay: _lastPeriodDate,
-              selectedDayPredicate: (day) {
-                return isSameDay(_lastPeriodDate, day);
-              },
-              onDaySelected: (selectedDay, focusedDay) {
-                setState(() {
-                  _lastPeriodDate = selectedDay;
-                });
-              },
-              calendarStyle: CalendarStyle(
-                selectedDecoration: BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                ),
-                todayDecoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.3),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              headerStyle: const HeaderStyle(
-                formatButtonVisible: false,
-                titleCentered: true,
-              ),
-            ),
-          ),
-
-          // Selected date display
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Text(
-                "Selected: ${DateFormat('MMM dd, yyyy').format(_lastPeriodDate)}",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Info text
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: Colors.blue.shade700,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    "Select the first day of your most recent period. This is important for accurate cycle predictions.",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.blue.shade700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildLoadingPage() {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -1831,7 +1802,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
   }) {
     return Container(
       height: 150,
-      width: 60,
+      width: 80,
       child: ListView.builder(
         itemCount: items.length,
         itemBuilder: (context, index) {
@@ -1852,7 +1823,7 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
               child: Text(
                 items[index],
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 24,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                   color: isSelected ? AppColors.primary : Colors.black87,
                 ),
@@ -1872,10 +1843,10 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.primary : Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(25),
           border: Border.all(
             color: isSelected ? AppColors.primary : Colors.grey.shade300,
             width: 1,
@@ -1884,8 +1855,8 @@ class _OnboardingScreensState extends State<OnboardingScreens> {
         child: Text(
           text,
           style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
             color: isSelected ? Colors.white : Colors.black87,
           ),
         ),

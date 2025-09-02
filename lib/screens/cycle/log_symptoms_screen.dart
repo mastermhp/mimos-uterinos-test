@@ -10,6 +10,7 @@ import 'package:menstrual_health_ai/services/api_service.dart';
 import 'package:menstrual_health_ai/widgets/animated_gradient_button.dart';
 import 'package:menstrual_health_ai/widgets/custom_app_bar.dart';
 import 'package:provider/provider.dart';
+import 'package:menstrual_health_ai/screens/cycle/custom_symptom_screen.dart';
 
 class LogSymptomsScreen extends StatefulWidget {
   const LogSymptomsScreen({Key? key}) : super(key: key);
@@ -22,6 +23,10 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+
+  // Search controller
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   // Create an instance of AIService
   final AIService _aiService = AIService();
@@ -81,6 +86,7 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
   @override
   void dispose() {
     _animationController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -104,20 +110,23 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
 
     try {
       // Get user data from provider
-      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      final userDataProvider =
+          Provider.of<UserDataProvider>(context, listen: false);
       final userData = userDataProvider.userData;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUser;
 
-      print('📊 Checking user data: ${userData != null ? "Available" : "NULL"}');
-      print('📊 Checking current user: ${currentUser != null ? "Available" : "NULL"}');
-      
+      print(
+          '📊 Checking user data: ${userData != null ? "Available" : "NULL"}');
+      print(
+          '📊 Checking current user: ${currentUser != null ? "Available" : "NULL"}');
+
       // Create a list of symptoms for analysis
       final List<String> symptomsList = _symptoms.entries
           .where((entry) => entry.value)
           .map((entry) => entry.key)
           .toList();
-      
+
       if (_painLevel > 0) {
         symptomsList.add("Pain Level: $_painLevel/10");
       }
@@ -131,28 +140,28 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
       // Try multiple approaches to get user data
       if (userData == null || currentUser == null) {
         print('⚠️ Using fallback approach for analysis with cycle data...');
-        
+
         try {
           // Try to get cycles data for the user
           final cyclesResponse = await ApiService.getCycles(
             userId: currentUser?.id ?? '',
           );
-          
-          if (cyclesResponse != null && 
-              cyclesResponse['success'] == true && 
+
+          if (cyclesResponse != null &&
+              cyclesResponse['success'] == true &&
               cyclesResponse['data'] != null) {
-            
             final cyclesData = cyclesResponse['data'] as List<dynamic>;
-            print('✅ Successfully fetched ${cyclesData.length} cycles from API');
-            
+            print(
+                '✅ Successfully fetched ${cyclesData.length} cycles from API');
+
             if (cyclesData.isNotEmpty) {
               // Use the most recent cycle data
               final mostRecentCycle = cyclesData.first;
-              
+
               print('📊 Using cycle data: ${mostRecentCycle['id']}');
               print('📊 Start date: ${mostRecentCycle['startDate']}');
               print('📊 Cycle length: ${mostRecentCycle['cycleLength']}');
-              
+
               // Create a UserData object from cycle data
               final tempUserData = UserData(
                 id: mostRecentCycle['userId'] ?? 'default_id',
@@ -160,7 +169,8 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                 email: currentUser?.email ?? '',
                 age: 30,
                 cyclesTracked: cyclesData.length,
-                birthDate: DateTime.now().subtract(const Duration(days: 365 * 30)), // Default to 30 years ago
+                birthDate: DateTime.now().subtract(
+                    const Duration(days: 365 * 30)), // Default to 30 years ago
                 lastPeriodDate: DateTime.parse(mostRecentCycle['startDate']),
                 cycleLength: mostRecentCycle['cycleLength'] ?? 28,
                 periodLength: mostRecentCycle['periodLength'] ?? 5,
@@ -183,40 +193,43 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                 goals: [],
                 preferences: {},
               );
-              
+
               // Calculate current cycle day based on most recent period
               final today = DateTime.now();
-              final lastPeriodDate = DateTime.parse(mostRecentCycle['startDate']);
-              final daysSinceLastPeriod = today.difference(lastPeriodDate).inDays;
-              final cycleDay = ((daysSinceLastPeriod % (mostRecentCycle['cycleLength'] ?? 28)) + 1).toInt();
-              
+              final lastPeriodDate =
+                  DateTime.parse(mostRecentCycle['startDate']);
+              final daysSinceLastPeriod =
+                  today.difference(lastPeriodDate).inDays;
+              final cycleDay = ((daysSinceLastPeriod %
+                          (mostRecentCycle['cycleLength'] ?? 28)) +
+                      1)
+                  .toInt();
+
               print('📊 Calculated cycle day: $cycleDay');
               print('🤖 Starting AI analysis with cycle data...');
-              
+
               // Call AI service with the constructed UserData
               final analysisData = await _aiService.analyzeSymptoms(
-                symptomsList, 
-                cycleDay, 
-                tempUserData
-              );
-              
+                  symptomsList, cycleDay, tempUserData);
+
               setState(() {
                 _aiAnalysisData = analysisData;
-                _aiAnalysis = analysisData['analysis'] ?? 'Analysis based on your cycle history.';
+                _aiAnalysis = analysisData['analysis'] ??
+                    'Analysis based on your cycle history.';
                 _showAnalysis = true;
                 _isLoading = false;
               });
-              
+
               print('✅ AI analysis completed successfully with cycle data');
               return;
             }
           } else {
             print('❌ Failed to get cycles or no cycles available');
           }
-          
+
           // If we couldn't get cycle data, continue with basic fallback
           print('⚠️ Using basic fallback approach...');
-          
+
           // Create a minimal UserData object with reasonable defaults
           final fallbackUserData = UserData(
             id: currentUser?.id ?? 'fallback_id',
@@ -247,37 +260,41 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
             goals: [],
             preferences: {},
           );
-          
+
           final analysisData = await _aiService.analyzeSymptoms(
-            symptomsList, 
-            14, // Assume mid-cycle as fallback
-            fallbackUserData
-          );
-          
+              symptomsList,
+              14, // Assume mid-cycle as fallback
+              fallbackUserData);
+
           setState(() {
             _aiAnalysisData = analysisData;
-            _aiAnalysis = analysisData['analysis'] ?? 'Analysis based on limited data. For more accurate results, please update your profile.';
+            _aiAnalysis = analysisData['analysis'] ??
+                'Analysis based on limited data. For more accurate results, please update your profile.';
             _showAnalysis = true;
             _isLoading = false;
           });
-          
+
           print('✅ AI analysis completed with fallback data');
         } catch (fallbackError) {
           print('❌ Fallback approach failed: $fallbackError');
-          throw Exception("Unable to analyze symptoms. Please ensure your profile is complete.");
+          throw Exception(
+              "Unable to analyze symptoms. Please ensure your profile is complete.");
         }
       } else {
         // Use actual user data
         final today = DateTime.now();
-        final daysSinceLastPeriod = today.difference(userData.lastPeriodDate).inDays;
-        final cycleDay = ((daysSinceLastPeriod % userData.cycleLength) + 1).toInt();
+        final daysSinceLastPeriod =
+            today.difference(userData.lastPeriodDate).inDays;
+        final cycleDay =
+            ((daysSinceLastPeriod % userData.cycleLength) + 1).toInt();
 
         print('📊 User data available: ${userData.name}, age: ${userData.age}');
         print('📊 Last period date: ${userData.lastPeriodDate}');
         print('📊 Cycle length: ${userData.cycleLength}');
         print('📊 Current cycle day: $cycleDay');
 
-        final analysisData = await _aiService.analyzeSymptoms(symptomsList, cycleDay, userData);
+        final analysisData =
+            await _aiService.analyzeSymptoms(symptomsList, cycleDay, userData);
 
         setState(() {
           _aiAnalysisData = analysisData;
@@ -292,13 +309,15 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
       print('❌ Overall analysis failed: $e');
       setState(() {
         _isLoading = false;
-        _aiAnalysis = 'We encountered an issue while analyzing your symptoms. Here are some general insights about your symptoms, though they may not be personalized to your cycle.';
+        _aiAnalysis =
+            'We encountered an issue while analyzing your symptoms. Here are some general insights about your symptoms, though they may not be personalized to your cycle.';
         _showAnalysis = true;
       });
-      
+
       // Create some generic analysis as fallback
       _aiAnalysisData = {
-        'analysis': 'The symptoms you\'ve logged are common during menstrual cycles. If you experience severe pain, consider consulting a healthcare provider.',
+        'analysis':
+            'The symptoms you\'ve logged are common during menstrual cycles. If you experience severe pain, consider consulting a healthcare provider.',
         'recommendations': [
           'Stay hydrated and maintain a balanced diet',
           'Light exercise like walking can help alleviate some symptoms',
@@ -306,10 +325,11 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
           'Ensure you\'re getting enough rest'
         ]
       };
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not generate personalized analysis: ${e.toString()}'),
+          content:
+              Text('Could not generate personalized analysis: ${e.toString()}'),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 4),
         ),
@@ -347,11 +367,7 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: const CustomAppBar(
-        title: 'Log Symptoms',
-        showBackButton: true,
-      ),
+      backgroundColor: const Color(0xFFF8F9FA),
       body: _showAnalysis ? _buildAnalysisScreen() : _buildSymptomForm(),
     );
   }
@@ -360,34 +376,212 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
+        child: SafeArea(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDateSelector(),
-              const SizedBox(height: 24),
-              _buildSymptomsGrid(),
-              const SizedBox(height: 24),
-              _buildSliders(),
-              const SizedBox(height: 32),
-              Center(
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: AppColors.primary)
-                    : AnimatedGradientButton(
-                        text: 'Analyze Symptoms',
-                        onPressed: _analyzeSymptoms,
-                        width: double.infinity,
-                        height: 56,
-                        // borderRadius: 28,
-                        gradientColors: const [
-                          AppColors.primary,
-                          AppColors.secondary,
-                        ],
-                        icon: Icons.analytics,
+              // Custom Header
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header Row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Title Section
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Symptoms',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                            Text(
+                              'Tracker',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFE91E63),
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Buttons
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2C3E50),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.pop(context); // Go back to calendar
+                                },
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.calendar_today,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'View Calendar',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Log New Symptom Button
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const CustomSymptomScreen(),
+                            ),
+                          );
+
+                          if (result == true) {
+                            // Refresh symptoms or show success message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content:
+                                    Text('Custom symptom added successfully!'),
+                                backgroundColor: AppColors.primary,
+                              ),
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE91E63),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.add, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Log New Symptom',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Search Bar
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2C3E50),
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (value) {
+                          setState(() {
+                            _searchQuery = value.toLowerCase();
+                          });
+                        },
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Search symptoms...',
+                          hintStyle: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 16,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: Colors.grey[400],
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Description
+                    Text(
+                      'Monitor and log your symptoms throughout your cycle',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey[600],
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 24),
+
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildDateSelector(),
+                    const SizedBox(height: 24),
+                    _buildSymptomsGrid(),
+                    const SizedBox(height: 24),
+                    _buildSliders(),
+                    const SizedBox(height: 32),
+                    Center(
+                      child: _isLoading
+                          ? const CircularProgressIndicator(
+                              color: AppColors.primary)
+                          : AnimatedGradientButton(
+                              text: 'Analyze Symptoms',
+                              onPressed: _analyzeSymptoms,
+                              width: double.infinity,
+                              height: 56,
+                              gradientColors: const [
+                                Color(0xFFE91E63),
+                                Color(0xFFF06292),
+                              ],
+                              icon: Icons.analytics,
+                            ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -481,14 +675,20 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
   }
 
   Widget _buildSymptomsGrid() {
+    // Filter symptoms based on search query
+    final filteredSymptoms = _symptoms.keys.where((symptom) {
+      return symptom.toLowerCase().contains(_searchQuery);
+    }).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Symptoms',
-          style: TextStyles.heading4.copyWith(
+          style: TextStyle(
             fontSize: 18,
-            color: AppColors.primary,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: 16),
@@ -501,9 +701,9 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
-          itemCount: _symptoms.length,
+          itemCount: filteredSymptoms.length,
           itemBuilder: (context, index) {
-            final symptom = _symptoms.keys.elementAt(index);
+            final symptom = filteredSymptoms[index];
             final isSelected = _symptoms[symptom]!;
 
             return GestureDetector(
@@ -515,15 +715,22 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
               child: Container(
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? AppColors.primary.withOpacity(0.1)
+                      ? const Color(0xFFE91E63).withOpacity(0.1)
                       : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isSelected
-                        ? AppColors.primary
+                        ? const Color(0xFFE91E63)
                         : Colors.grey.withOpacity(0.3),
                     width: isSelected ? 2 : 1,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 5,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -536,15 +743,18 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                           )
                         : Icon(
                             Icons.healing,
-                            color: isSelected ? AppColors.primary : Colors.grey,
+                            color: isSelected
+                                ? const Color(0xFFE91E63)
+                                : Colors.grey,
                             size: 32,
                           ),
                     const SizedBox(height: 8),
                     Text(
                       symptom,
-                      style: TextStyles.body2.copyWith(
-                        color:
-                            isSelected ? AppColors.primary : Colors.grey[700],
+                      style: TextStyle(
+                        color: isSelected
+                            ? const Color(0xFFE91E63)
+                            : Colors.grey[700],
                         fontSize: 12,
                         fontWeight:
                             isSelected ? FontWeight.bold : FontWeight.normal,
@@ -758,27 +968,31 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                     setState(() {
                       _isLoading = true;
                     });
-                    
-                    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+                    final authProvider =
+                        Provider.of<AuthProvider>(context, listen: false);
                     final currentUser = authProvider.currentUser;
-                    
+
                     if (currentUser == null) {
                       throw Exception("User not logged in");
                     }
-                    
+
                     // Format date as required by API (YYYY-MM-DD)
-                    final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
-                    
+                    final formattedDate =
+                        DateFormat('yyyy-MM-dd').format(_selectedDate);
+
                     // Prepare detailed symptoms with severity for API
-                    final List<Map<String, dynamic>> apiSymptoms = _symptoms.entries
+                    final List<Map<String, dynamic>> apiSymptoms = _symptoms
+                        .entries
                         .where((entry) => entry.value)
                         .map((entry) => {
-                              'type': entry.key.toLowerCase().replaceAll(' ', '_'),
+                              'type':
+                                  entry.key.toLowerCase().replaceAll(' ', '_'),
                               'severity': _getSeverityFromPainLevel(_painLevel),
                               'notes': '',
                             })
                         .toList();
-                    
+
                     // Add level-based symptoms
                     if (_painLevel > 0) {
                       apiSymptoms.add({
@@ -795,7 +1009,7 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                         'notes': 'Energy level: $_energyLevel/10',
                       });
                     }
-                    
+
                     if (_moodLevel > 0) {
                       apiSymptoms.add({
                         'type': 'mood',
@@ -803,14 +1017,14 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                         'notes': 'Mood level: $_moodLevel/10',
                       });
                     }
-                    
+
                     print('🔄 Saving symptoms to journal/backend...');
                     print('📤 User ID: ${currentUser.id}');
                     print('📤 Date: $formattedDate');
                     print('📤 Symptoms: $apiSymptoms');
                     print('📤 Flow: ${_getFlowLevel()}');
                     print('📤 Mood: ${_getMoodFromLevel(_moodLevel)}');
-                    
+
                     // Call the API service to create symptom log
                     final response = await ApiService.createSymptomLog(
                       userId: currentUser.id,
@@ -819,17 +1033,22 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                       flow: _getFlowLevel(),
                       mood: _getMoodFromLevel(_moodLevel),
                       temperature: null,
-                      notes: _aiAnalysis.isNotEmpty ? 'Based on AI analysis: $_aiAnalysis' : 'Logged symptoms',
+                      notes: _aiAnalysis.isNotEmpty
+                          ? 'Based on AI analysis: $_aiAnalysis'
+                          : 'Logged symptoms',
                     );
-                    
+
                     if (response != null && response['success'] == true) {
                       print('✅ SYMPTOM LOG SAVED TO JOURNAL SUCCESSFULLY!');
                       print('📋 Journal Save Confirmation:');
                       print('  "success": true,');
-                      print('  "message": "Symptom log saved to journal successfully",');
+                      print(
+                          '  "message": "Symptom log saved to journal successfully",');
                       print('  "data": ${response['data']}');
-                      print('  "timestamp": "${DateTime.now().toIso8601String()}",');
-                      print('  "symptoms_count": ${_symptoms.values.where((v) => v).length},');
+                      print(
+                          '  "timestamp": "${DateTime.now().toIso8601String()}",');
+                      print(
+                          '  "symptoms_count": ${_symptoms.values.where((v) => v).length},');
                       print('  "pain_level": $_painLevel,');
                       print('  "mood_level": $_moodLevel,');
                       print('  "energy_level": $_energyLevel');
@@ -837,7 +1056,8 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                       // Show success message
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Symptoms saved to your journal successfully!'),
+                          content: Text(
+                              'Symptoms saved to your journal successfully!'),
                           backgroundColor: Colors.green,
                           duration: Duration(seconds: 2),
                         ),
@@ -846,10 +1066,12 @@ class _LogSymptomsScreenState extends State<LogSymptomsScreen>
                       // Navigate back
                       Navigator.pop(context, true);
                     } else {
-                      print('❌ Failed to save symptoms to journal: ${response?['message'] ?? 'Unknown error'}');
+                      print(
+                          '❌ Failed to save symptoms to journal: ${response?['message'] ?? 'Unknown error'}');
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Failed to save symptoms: ${response?['message'] ?? 'Unknown error'}'),
+                          content: Text(
+                              'Failed to save symptoms: ${response?['message'] ?? 'Unknown error'}'),
                           backgroundColor: Colors.red,
                           duration: const Duration(seconds: 3),
                         ),

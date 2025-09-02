@@ -495,7 +495,7 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                             ),
                           ),
                           calendarBuilders: CalendarBuilders(
-                            markerBuilder: (context, date, events) {
+                            defaultBuilder: (context, date, _) {
                               final isPeriodDay =
                                   _periodDays.any((d) => isSameDay(d, date));
                               final isFertileDay =
@@ -504,42 +504,60 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                                   isSameDay(_ovulationDay!, date);
 
                               if (isPeriodDay) {
-                                return Positioned(
-                                  bottom: 8,
-                                  child: Container(
-                                    width: 35,
-                                    height: 35,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withOpacity(0.3),
-                                      shape: BoxShape.circle,
+                                return Container(
+                                  margin: const EdgeInsets.all(4.0),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                        0xFFE91E63), // Pink/Red for period
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${date.day}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                 );
                               }
 
                               if (isOvulationDay) {
-                                return Positioned(
-                                  bottom: 8,
-                                  child: Container(
-                                    width: 35,
-                                    height: 35,
-                                    decoration: BoxDecoration(
-                                      color: Colors.purple.withOpacity(0.3),
-                                      shape: BoxShape.circle,
+                                return Container(
+                                  margin: const EdgeInsets.all(4.0),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                        0xFF9C27B0), // Purple for ovulation
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${date.day}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                 );
                               }
 
                               if (isFertileDay) {
-                                return Positioned(
-                                  bottom: 8,
-                                  child: Container(
-                                    width: 35,
-                                    height: 35,
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.withOpacity(0.2),
-                                      shape: BoxShape.circle,
+                                return Container(
+                                  margin: const EdgeInsets.all(4.0),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                        0xFF8E24AA), // Light purple for fertile days
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${date.day}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                 );
@@ -547,6 +565,142 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
 
                               return null;
                             },
+                            todayBuilder: (context, date, _) {
+                              final isPeriodDay =
+                                  _periodDays.any((d) => isSameDay(d, date));
+                              final isFertileDay =
+                                  _fertileDays.any((d) => isSameDay(d, date));
+                              final isOvulationDay = _ovulationDay != null &&
+                                  isSameDay(_ovulationDay!, date);
+
+                              if (isPeriodDay) {
+                                return Container(
+                                  margin: const EdgeInsets.all(4.0),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE91E63),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: Colors.white, width: 2),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${date.day}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              if (isOvulationDay) {
+                                return Container(
+                                  margin: const EdgeInsets.all(4.0),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF9C27B0),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: Colors.white, width: 2),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${date.day}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              if (isFertileDay) {
+                                return Container(
+                                  margin: const EdgeInsets.all(4.0),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF8E24AA),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: Colors.white, width: 2),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${date.day}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              // Default today styling
+                              return Container(
+                                margin: const EdgeInsets.all(4.0),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withOpacity(0.3),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: AppColors.primary, width: 2),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${date.day}',
+                                    style: TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                            selectedBuilder: (context, date, _) {
+                              final isPeriodDay =
+                                  _periodDays.any((d) => isSameDay(d, date));
+                              final isFertileDay =
+                                  _fertileDays.any((d) => isSameDay(d, date));
+                              final isOvulationDay = _ovulationDay != null &&
+                                  isSameDay(_ovulationDay!, date);
+
+                              Color backgroundColor = AppColors.primary;
+
+                              if (isPeriodDay) {
+                                backgroundColor = const Color(0xFFE91E63);
+                              } else if (isOvulationDay) {
+                                backgroundColor = const Color(0xFF9C27B0);
+                              } else if (isFertileDay) {
+                                backgroundColor = const Color(0xFF8E24AA);
+                              }
+
+                              return Container(
+                                margin: const EdgeInsets.all(4.0),
+                                decoration: BoxDecoration(
+                                  color: backgroundColor,
+                                  shape: BoxShape.circle,
+                                  border:
+                                      Border.all(color: Colors.white, width: 3),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: backgroundColor.withOpacity(0.4),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${date.day}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                            // Remove the old markerBuilder as we're now handling everything in the above builders
                           ),
                         ),
                       ).animate().fadeIn(duration: 800.ms, delay: 200.ms),
@@ -557,12 +711,11 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
+                            _buildLegendItem("Period", const Color(0xFFE91E63)),
                             _buildLegendItem(
-                                "Period", AppColors.primary.withOpacity(0.3)),
-                            _buildLegendItem("Fertile Window",
-                                Colors.green.withOpacity(0.2)),
+                                "Fertile Window", const Color(0xFF8E24AA)),
                             _buildLegendItem(
-                                "Ovulation", Colors.purple.withOpacity(0.3)),
+                                "Ovulation", const Color(0xFF9C27B0)),
                           ],
                         ),
                       ).animate().fadeIn(duration: 800.ms, delay: 400.ms),

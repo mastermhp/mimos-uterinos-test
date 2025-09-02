@@ -62,6 +62,11 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isLoadingConsultations = true;
   bool _isLoadingAIDashboardInsights = true;
 
+  // Add these new state variables for journal recommendations
+  List<Map<String, dynamic>> _journalRecommendations = [];
+  bool _isLoadingJournalRecommendations = true;
+  String _currentCyclePhase = "unknown";
+
   late TabController _tabController;
 
   @override
@@ -92,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen>
         _loadUserStats(),
         _loadSymptoms(),
         _loadDoctorConsultations(),
+        _loadJournalRecommendations(), // Add this new method
         _loadAIData(), // Local AI processing
       ]);
 
@@ -408,8 +414,12 @@ class _HomeScreenState extends State<HomeScreen>
 
       print('🔄 Loading AI dashboard insights...');
 
-      // Add timeout and retry logic
-      final response = await _loadAIDashboardInsightsWithRetry(maxRetries: 2);
+      // Get the actual user ID
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.id ?? '';
+
+      // Direct API call without retry mechanism that's causing issues
+      final response = await ApiService.getAIDashboardInsights(userId: userId);
 
       if (response != null && response['success'] == true) {
         setState(() {
@@ -429,36 +439,122 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // Add retry mechanism for API calls
-  Future<Map<String, dynamic>?> _loadAIDashboardInsightsWithRetry(
-      {int maxRetries = 2}) async {
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        print('🔄 Attempt $attempt/$maxRetries for AI dashboard insights');
+  Future<void> _loadJournalRecommendations() async {
+    try {
+      setState(() {
+        _isLoadingJournalRecommendations = true;
+      });
 
-        final response = await ApiService.getAIDashboardInsights(userId: '')
-            .timeout(const Duration(seconds: 10)); // Add timeout
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.id;
 
-        if (response != null && response['success'] == true) {
-          return response;
-        } else if (attempt < maxRetries) {
-          print('⚠️ Attempt $attempt failed, retrying in 2 seconds...');
-          await Future.delayed(const Duration(seconds: 2));
-        }
-      } catch (e) {
-        print('❌ Attempt $attempt failed: $e');
-        if (attempt < maxRetries) {
-          print('⚠️ Retrying in 2 seconds...');
-          await Future.delayed(const Duration(seconds: 2));
-        } else {
-          rethrow;
-        }
+      if (userId == null) {
+        print('❌ Cannot load journal recommendations: User ID is null');
+        _setFallbackJournalRecommendations();
+        return;
       }
+
+      print('🔄 Loading journal recommendations for user: $userId');
+      final response = await ApiService.getJournalRecommendations(userId: userId);
+
+      if (response != null && response['success'] == true) {
+        setState(() {
+          _journalRecommendations = List<Map<String, dynamic>>.from(response['data']['recommendations'] ?? []);
+          _currentCyclePhase = response['data']['cyclePhase'] ?? 'unknown';
+          _isLoadingJournalRecommendations = false;
+        });
+
+        print('✅ Journal recommendations loaded: ${_journalRecommendations.length} items');
+        print('🔄 Current cycle phase: $_currentCyclePhase');
+      } else {
+        print('❌ Failed to load journal recommendations');
+        _setFallbackJournalRecommendations();
+      }
+    } catch (e) {
+      print('❌ Error loading journal recommendations: $e');
+      _setFallbackJournalRecommendations();
     }
-    return null;
   }
 
-  // Extract AI data processing to separate method
+  void _setFallbackJournalRecommendations() {
+    setState(() {
+      _journalRecommendations = [
+        {
+          'id': 'cramp-relief',
+          'title': 'Coping with cramps',
+          'subtitle': 'Quick pain relief tips',
+          'content': 'Heat therapy, gentle movement, and anti-inflammatory foods can provide natural cramp relief during your menstrual cycle.',
+          'category': 'pain-relief',
+          'thumbnail': '🔥',
+          'image': 'assets/images/jornal1.png',
+          'readTime': '4 min read',
+          'tips': [
+            'Quick pain relief tips',
+            'What\'s causing your cramps',
+            'Natural remedies that work',
+          ],
+          'publishedDate': '2 days ago',
+          'isFeatured': true,
+        },
+        {
+          'id': 'cycle-tracking',
+          'title': 'Managing Multiple Symptoms: Breast...',
+          'subtitle': 'Understanding your unique patterns',
+          'content': 'Regular cycle tracking helps you understand your body\'s patterns and predict how you might feel throughout your cycle.',
+          'category': 'education',
+          'thumbnail': '📊',
+          'image': 'assets/images/jornal2.png',
+          'readTime': '10 min read',
+          'publishedDate': '1 week ago',
+        },
+        {
+          'id': 'mood-management',
+          'title': 'Managing Multiple Symptoms:...',
+          'subtitle': 'Emotional wellness during your cycle',
+          'content': 'Understanding and managing emotional changes throughout your menstrual cycle with practical strategies.',
+          'category': 'mood',
+          'thumbnail': '💭',
+          'image': 'assets/images/jornal3.png',
+          'readTime': '9 min read',
+          'publishedDate': '3 days ago',
+        },
+      ];
+      _currentCyclePhase = 'menstrual';
+      _isLoadingJournalRecommendations = false;
+    });
+  }
+
+  String _getPhaseMessage() {
+    switch (_currentCyclePhase) {
+      case 'menstrual':
+        return 'During period';
+      case 'follicular':
+        return 'Follicular phase';
+      case 'ovulation':
+        return 'Ovulation phase';
+      case 'luteal':
+        return 'Luteal phase';
+      default:
+        return 'During period';
+    }
+  }
+
+  int _getCurrentCycleDayForPhase() {
+    if (_userProfile == null) return 1;
+    
+    final lastPeriodDateString = _userProfile?['lastPeriodDate'];
+    final cycleLength = _userProfile?['cycleLength'] ?? 28;
+    
+    if (lastPeriodDateString == null) return 1;
+    
+    final lastPeriodDate = DateTime.tryParse(lastPeriodDateString);
+    if (lastPeriodDate == null) return 1;
+    
+    final today = DateTime.now();
+    final daysSinceLastPeriod = today.difference(lastPeriodDate).inDays;
+    return ((daysSinceLastPeriod % cycleLength) + 1).toInt();
+  }
+
   void _processAIDashboardData(Map<String, dynamic> response) {
     try {
       // Update the AI insights from backend - use the actual insights field
@@ -490,7 +586,6 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // Extract recommendations processing
   void _processRecommendations(dynamic recommendationsData) {
     try {
       final recommendationsList = recommendationsData as List;
@@ -695,150 +790,177 @@ class _HomeScreenState extends State<HomeScreen>
         onRefresh: _loadData,
         child: CustomScrollView(
           slivers: [
-            // App Bar (keep only this one)
+            // App Bar (updated with new design)
             SliverAppBar(
-              expandedHeight: 400, // Increased to accommodate calendar strip
+              expandedHeight: 500, // Increased height to match design
               floating: false,
               pinned: true,
               backgroundColor: AppColors.primary,
+              automaticallyImplyLeading: false, // Remove back button
               flexibleSpace: FlexibleSpaceBar(
-                title: const Text(
-                  "Mimos Uterinos",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                title: null, // Remove title to have cleaner look
                 background: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Gradient background
+                    // Background image with overlay
                     Container(
                       decoration: const BoxDecoration(
+                        image: DecorationImage(
+                          image: AssetImage('assets/images/hero.png'),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+
+                    // Optional gradient overlay to ensure text readability
+                    Container(
+                      decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          begin: Alignment.topRight,
-                          end: Alignment.bottomLeft,
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
                           colors: [
-                            AppColors.primary,
-                            AppColors.primaryDark,
+                            Colors.black.withOpacity(0.1),
+                            Colors.black.withOpacity(0.2),
+                            Colors.black.withOpacity(0.3),
                           ],
+                          stops: const [0.0, 0.6, 1.0],
                         ),
                       ),
                     ),
-                    // Decorative circles
+
+                    // Top section with profile and date
                     Positioned(
-                      top: -50,
-                      right: -80,
-                      child: Container(
-                        width: 240,
-                        height: 240,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.1),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: -90,
-                      left: -90,
-                      child: Container(
-                        width: 240,
-                        height: 240,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.1),
-                        ),
-                      ),
-                    ),
-                    // User greeting and cycle info
-                    Positioned(
-                      top: 120,
+                      top: 60,
                       left: 20,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      right: 20,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            "Hello, $displayName!",
-                            style: const TextStyle(
+                          // Profile icon
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.person_outline,
                               color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
+                              size: 24,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _getCycleStatusText(),
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
+
+                          // Date display
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                          ),
-                          if (userEmail.isNotEmpty)
-                            Text(
-                              userEmail,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 12,
+                            child: Text(
+                              DateFormat('dd MMMM').format(DateTime.now()),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
+                          ),
+
+                          // Calendar icon
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.calendar_today_outlined,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    // Calendar strip
+
+                    // Calendar strip (horizontal date selector)
                     Positioned(
-                      top: 240,
+                      top: 140,
                       left: 0,
                       right: 0,
-                      child: _buildCalendarStrip(),
+                      child: _buildEnhancedCalendarStrip(),
+                    ),
+
+                    // Period information section
+                    Positioned(
+                      bottom: 80,
+                      left: 0,
+                      right: 0,
+                      child: Column(
+                        children: [
+                          const Text(
+                            "Period",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w300,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _getCycleStatusText().contains("Day")
+                                ? _getCycleStatusText().split(" ")[1]
+                                : "Day 1",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 48,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 40),
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const CycleCalendarScreen(),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: const Color(0xFFE91E63),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                  vertical: 12,
+                                ),
+                              ),
+                              child: const Text(
+                                "Edit period dates",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.notifications_outlined,
-                      color: Colors.white),
-                  onPressed: () {
-                    setState(() {
-                      _showReminders = !_showReminders;
-                    });
-                  },
-                ),
-                IconButton(
-                  icon:
-                      const Icon(Icons.settings_outlined, color: Colors.white),
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/settings');
-                  },
-                ),
-                // Add logout button
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.account_circle, color: Colors.white),
-                  onSelected: (value) async {
-                    if (value == 'logout') {
-                      await authProvider.logout();
-                      if (!mounted) return;
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const LoginScreen()),
-                      );
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'logout',
-                      child: Row(
-                        children: [
-                          Icon(Icons.logout, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('Logout'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              // Remove actions entirely - no notification or menu icons
             ),
 
             // Reminders panel (conditionally shown)
@@ -933,6 +1055,11 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
               ),
+            ),
+
+            // Journal Recommendations Section
+            SliverToBoxAdapter(
+              child: _buildJournalRecommendationsSection(),
             ),
 
             // Cycle Predictions
@@ -1072,161 +1199,138 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildCalendarStrip() {
-    // Get today's date
+  Widget _buildEnhancedCalendarStrip() {
     final today = DateTime.now();
-
-    // Generate dates for the strip (2 days before today, today, and 3 days after)
-    final dates = List.generate(
-      6,
-      (index) => today.subtract(Duration(days: 2 - index)),
-    );
+    final dates =
+        List.generate(7, (index) => today.subtract(Duration(days: 3 - index)));
 
     return Container(
-      height: 120,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary.withOpacity(0.8),
-            AppColors.primary,
-          ],
-        ),
-      ),
-      child: Column(
-        children: [
-          // Day of week labels
-          Padding(
-            padding: const EdgeInsets.only(
-                top: 16.0, left: 20.0, right: 20.0, bottom: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: dates.map((date) {
-                final dayLetter = DateFormat('E').format(date)[0];
-                return Expanded(
-                  child: Text(
-                    dayLetter,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+      height: 100,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: dates.map((date) {
+          final isToday = _isSameDay(date, today);
+          final isSelected = _isSameDay(date, _selectedDate);
+
+          // Determine if this date is a period day
+          bool isPeriodDay = false;
+          if (_userProfile != null) {
+            final lastPeriodDate =
+                DateTime.tryParse(_userProfile?['lastPeriodDate'] ?? '');
+            final periodLength = _userProfile?['periodLength'] ?? 5;
+            final cycleLength = _userProfile?['cycleLength'] ?? 28;
+
+            if (lastPeriodDate != null) {
+              final daysSinceLastPeriod =
+                  date.difference(lastPeriodDate).inDays;
+              final cycleDay = (daysSinceLastPeriod % cycleLength) + 1;
+              isPeriodDay = cycleDay > 0 && cycleDay <= periodLength;
+            }
+          }
+
+          return GestureDetector(
+            onTap: () => _onDateSelected(date),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Day letter
+                Text(
+                  DateFormat('E').format(date)[0],
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
-                );
-              }).toList(),
-            ),
-          ),
+                ),
+                const SizedBox(height: 8),
 
-          // Date numbers
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: dates.map((date) {
-                  final isToday = _isSameDay(date, today);
-                  final isSelected = _isSameDay(date, _selectedDate);
-
-                  // Check if this date is in period (for highlighting)
-                  bool isInPeriod = false;
-                  if (_userProfile != null) {
-                    final lastPeriodDate = DateTime.tryParse(
-                        _userProfile?['lastPeriodDate'] ?? '');
-                    final periodLength = _userProfile?['periodLength'] ?? 5;
-                    final cycleLength = _userProfile?['cycleLength'] ?? 28;
-
-                    if (lastPeriodDate != null) {
-                      final daysSinceLastPeriod =
-                          date.difference(lastPeriodDate).inDays;
-                      final cycleDay = (daysSinceLastPeriod % cycleLength) + 1;
-                      isInPeriod = cycleDay > 0 && cycleDay <= periodLength;
-                    }
-                  }
-
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => _onDateSelected(date),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Today label
-                          SizedBox(
-                            height: 16,
-                            child: isToday
-                                ? const Text(
-                                    "TODAY",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  )
-                                : const SizedBox(),
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          // Date container
+                // Date circle
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isToday
+                        ? Colors.white
+                        : isSelected
+                            ? Colors.white.withOpacity(0.3)
+                            : Colors.transparent,
+                    border: isPeriodDay && !isToday
+                        ? Border.all(
+                            color: Colors.white,
+                            width: 2,
+                          )
+                        : null,
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (isToday)
                           Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
+                            width: 32,
+                            height: 32,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE91E63),
                               shape: BoxShape.circle,
-                              color: isToday
-                                  ? Colors.white
-                                  : isSelected
-                                      ? Colors.white.withOpacity(0.3)
-                                      : isInPeriod
-                                          ? Colors.white.withOpacity(0.2)
-                                          : Colors.transparent,
-                              border: isInPeriod && !isToday
-                                  ? Border.all(
-                                      color: Colors.white.withOpacity(0.6),
-                                      width: 2,
-                                    )
-                                  : null,
                             ),
                             child: Center(
                               child: Text(
                                 date.day.toString(),
-                                style: TextStyle(
-                                  color: isToday
-                                      ? AppColors.primary
-                                      : Colors.white,
-                                  fontSize: 18,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
+                          )
+                        else
+                          Text(
+                            date.day.toString(),
+                            style: TextStyle(
+                              color: isPeriodDay
+                                  ? Colors.white
+                                  : Colors.white.withOpacity(0.9),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
 
-                          const SizedBox(height: 4),
-
-                          // Period indicator dot
-                          SizedBox(
-                            height: 8,
-                            child: isInPeriod && !isToday
-                                ? Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  )
-                                : const SizedBox(),
+                        // Today label for current date
+                        if (isToday)
+                          const SizedBox(height: 2)
+                        else if (isPeriodDay)
+                          Container(
+                            margin: const EdgeInsets.only(top: 2),
+                            width: 4,
+                            height: 4,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ],
-                      ),
+                      ],
                     ),
-                  );
-                }).toList(),
-              ),
+                  ),
+                ),
+
+                // "TODAY" label
+                const SizedBox(height: 4),
+                if (isToday)
+                  const Text(
+                    "TODAY",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+              ],
             ),
-          ),
-        ],
+          );
+        }).toList(),
       ),
     );
   }
@@ -1658,7 +1762,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildInsightsCard() {
-    // Determine the source and content of insights
     String insightText = "Complete your profile to get personalized insights.";
     bool isFromAPI = false;
 
@@ -1690,130 +1793,87 @@ class _HomeScreenState extends State<HomeScreen>
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  isFromAPI ? Icons.auto_awesome : Icons.lightbulb_outline,
+                  Icons.auto_awesome,
                   color: AppColors.primary,
-                  size: 24,
+                  size: 20,
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                "AI Insights",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+              const Expanded(
+                child: Text(
+                  "AI Insights",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
-              const Spacer(),
-              // Show status indicator
-              if (_isLoadingAIDashboardInsights)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    color: AppColors.primary,
-                    strokeWidth: 2,
-                  ),
-                )
-              else if (!isFromAPI && _aiDashboardInsights == null)
-                Icon(
-                  Icons.wifi_off,
-                  color: Colors.orange[600],
-                  size: 16,
-                )
-              else if (isFromAPI)
-                Icon(
-                  Icons.check_circle,
-                  color: Colors.green[600],
-                  size: 16,
-                ),
             ],
           ),
           const SizedBox(height: 16),
-          if (_isLoadingInsights && _isLoadingAIDashboardInsights)
-            const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.all(4.0),
-              child: Text(
-                insightText,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: AppColors.textPrimary,
-                  height: 1.4,
-                ),
-              ),
-            ),
-
-          // Show status message
-          if (!_isLoadingAIDashboardInsights && _aiDashboardInsights == null)
+          _buildFormattedInsightText(insightText),
+          if (isFromAPI) ...[
+            const SizedBox(height: 12),
             Container(
-              margin: const EdgeInsets.only(top: 12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: Colors.orange[700],
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "AI insights temporarily unavailable. Using local recommendations. Pull down to refresh.",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange[700],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (isFromAPI)
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.green.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.cloud_done,
-                    color: Colors.green[700],
-                    size: 14,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    "AI insights updated",
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+              child: const Text(
+                "✅ Live AI Analysis",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.green,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _buildFormattedInsightText(String text) {
+    // Split the text and format it with bold headers
+    final parts = text.split('**');
+    List<TextSpan> spans = [];
+    
+    for (int i = 0; i < parts.length; i++) {
+      if (i % 2 == 0) {
+        // Regular text
+        spans.add(TextSpan(
+          text: parts[i],
+          style: const TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: AppColors.textSecondary,
+          ),
+        ));
+      } else {
+        // Bold text (between **)
+        spans.add(TextSpan(
+          text: parts[i],
+          style: const TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ));
+      }
+    }
+    
+    return RichText(
+      text: TextSpan(children: spans),
     );
   }
 
@@ -1986,6 +2046,733 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildJournalRecommendationsSection() {
+    final featuredRecommendation = _journalRecommendations.isNotEmpty 
+        ? _journalRecommendations.firstWhere(
+            (rec) => rec['isFeatured'] == true,
+            orElse: () => _journalRecommendations.first,
+          )
+        : null;
+    
+    final otherRecommendations = _journalRecommendations
+        .where((rec) => rec['id'] != featuredRecommendation?['id'])
+        .take(2)
+        .toList();
+
+    return Column(
+      children: [
+        // Header
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _getPhaseMessage(),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  if (_getCurrentCycleDayForPhase() > 0)
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Day ${_getCurrentCycleDayForPhase()}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              TextButton(
+                onPressed: () {
+                  _navigateToJournalScreen();
+                },
+                child: const Text(
+                  "View All",
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        const SizedBox(height: 16),
+
+        // Search Bar
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(25),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.search,
+                color: Colors.grey[600],
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: "Search articles, etc",
+                    hintStyle: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onTap: () {
+                    _navigateToJournalSearch();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Featured Article
+        if (_isLoadingJournalRecommendations)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            height: 280,
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
+          )
+        else if (featuredRecommendation != null)
+          _buildFeaturedArticleCard(featuredRecommendation),
+
+        const SizedBox(height: 24),
+
+        // "Based on your current cycle" section
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Based on your current cycle",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              if (_isLoadingJournalRecommendations)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: 160,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Container(
+                        height: 160,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else if (otherRecommendations.isNotEmpty)
+                Row(
+                  children: otherRecommendations.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final rec = entry.value;
+                    return Expanded(
+                      child: Container(
+                        margin: EdgeInsets.only(left: index > 0 ? 12 : 0),
+                        child: _buildSmallArticleCard(rec),
+                      ),
+                    );
+                  }).toList(),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.article_outlined,
+                          size: 48,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          "No recommendations available",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Log some symptoms to get personalized insights!",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeaturedArticleCard(Map<String, dynamic> article) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      height: 280,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background Image
+            Image.asset(
+              'assets/images/article.png', // Use a default article background
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFFE91E63),
+                        Color(0xFFEC407A),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            // Gradient Overlay
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFFE91E63).withOpacity(0.7),
+                    Colors.black.withOpacity(0.6),
+                  ],
+                ),
+              ),
+            ),
+
+            // Content
+            Positioned(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: 24,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Tags
+                  Row(
+                    children: [
+                      if (article['isCommunityGenerated'] == true)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE91E63),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'Your Insight',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      const Spacer(),
+                      if (article['publishedDate'] != null)
+                        Text(
+                          article['publishedDate'],
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
+                  ),
+
+                  const Spacer(),
+
+                  // Title
+                  Text(
+                    '${article['title']} ?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Tips
+                  if (article['tips'] != null)
+                    ...List.generate(
+                      (article['tips'] as List).take(3).length,
+                      (index) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 4,
+                              height: 4,
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                article['tips'][index],
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  const Spacer(),
+
+                  // Action Button
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        _showArticleDialog(article);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF8B1538),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Full Article',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmallArticleCard(Map<String, dynamic> article) {
+    return GestureDetector(
+      onTap: () => _showArticleDialog(article),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image
+            Container(
+              height: 100,
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.pink.withOpacity(0.2),
+                    Colors.purple.withOpacity(0.2),
+                  ],
+                ),
+              ),
+              child: Stack(
+                children: [
+                  if (article['image'] != null)
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      child: Image.asset(
+                        article['image'],
+                        width: double.infinity,
+                        height: 100,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: double.infinity,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.pink.withOpacity(0.3),
+                                  Colors.purple.withOpacity(0.3),
+                                ],
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                article['thumbnail'] ?? '📄',
+                                style: const TextStyle(fontSize: 32),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Text(
+                        article['thumbnail'] ?? '📄',
+                        style: const TextStyle(fontSize: 32),
+                      ),
+                    ),
+                  
+                  if (article['isCommunityGenerated'] == true)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE91E63),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Your Insight',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    article['title'] ?? '',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                      height: 1.2,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        article['readTime'] ?? '5 min read',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showArticleDialog(Map<String, dynamic> article) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 600),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          article['title'] ?? '',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (article['subtitle'] != null) ...[
+                          Text(
+                            article['subtitle'],
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        
+                        Text(
+                          article['content'] ?? '',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.5,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        
+                        if (article['tips'] != null) ...[
+                          const SizedBox(height: 20),
+                          const Text(
+                            'Key Tips:',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ...List.generate(
+                            (article['tips'] as List).length,
+                            (index) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    margin: const EdgeInsets.only(top: 6),
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.primary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      article['tips'][index],
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                
+                // Action buttons
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Close'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _navigateToJournalScreen(); // Navigate to full journal
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Read More'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _navigateToJournalScreen() {
+    // TODO: Replace with actual journal screen when created
+    // For now, navigate to a placeholder or existing screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AiCoachScreen(), // Temporary - replace with JournalScreen
+      ),
+    );
+  }
+
+  void _navigateToJournalSearch() {
+    // TODO: Replace with actual journal search screen when created
+    // For now, navigate to a placeholder or show search functionality
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AiCoachScreen(), // Temporary - replace with JournalSearchScreen
+      ),
     );
   }
 }

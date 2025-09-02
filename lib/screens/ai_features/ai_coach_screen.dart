@@ -23,11 +23,12 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
   bool _isTyping = false;
   bool _isLoadingHistory = true;
   final AIService _aiService = AIService();
-  
-  // Chat messages
+
+  // Chat messages and history
   final List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _chatHistory = [];
   String? _currentChatId;
-  
+
   // Suggested questions
   final List<String> _suggestedQuestions = [
     "How can I manage my ovulation symptoms?",
@@ -42,7 +43,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
     super.initState();
     _loadChatHistory();
   }
-  
+
   Future<void> _loadChatHistory() async {
     try {
       setState(() {
@@ -51,7 +52,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUser;
-      
+
       if (currentUser == null) {
         print('❌ No current user found');
         setState(() {
@@ -62,35 +63,23 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
       }
 
       print('🔄 Loading chat history for user: ${currentUser.id}');
-      
-      // Try to load chat history from server
+
+      // Updated API call to use GET /ai/chat with userId parameter
       final response = await ApiService.getChatHistory(
         userId: currentUser.id,
       );
 
       if (response != null && response['success'] == true) {
         final data = response['data'] as List<dynamic>;
-        
+
+        setState(() {
+          _chatHistory = data.cast<Map<String, dynamic>>();
+        });
+
         if (data.isNotEmpty) {
           // Load the most recent chat conversation
           final chatData = data.first;
-          _currentChatId = chatData['id'];
-          
-          final messages = chatData['messages'] as List<dynamic>;
-          
-          setState(() {
-            _messages.clear();
-            for (final msg in messages) {
-              _messages.add({
-                'isUser': msg['role'] == 'user',
-                'message': msg['content'],
-                'timestamp': DateTime.parse(msg['timestamp']),
-                'id': msg['id'],
-              });
-            }
-          });
-          
-          print('✅ Loaded ${_messages.length} messages from chat history');
+          _loadChatMessages(chatData);
         } else {
           // No existing chat history, add initial greeting
           _addInitialGreeting();
@@ -108,23 +97,45 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
       });
     }
   }
-  
+
+  void _loadChatMessages(Map<String, dynamic> chatData) {
+    _currentChatId = chatData['id'];
+    final messages = chatData['messages'] as List<dynamic>;
+
+    setState(() {
+      _messages.clear();
+      for (final msg in messages) {
+        _messages.add({
+          'isUser': msg['role'] == 'user',
+          'message': msg['content'],
+          'timestamp': DateTime.parse(msg['timestamp']),
+          'id': msg['id'],
+        });
+      }
+    });
+
+    print('✅ Loaded ${_messages.length} messages from chat');
+  }
+
   void _addInitialGreeting() async {
-    final userData = Provider.of<UserDataProvider>(context, listen: false).userData;
-    
+    final userData =
+        Provider.of<UserDataProvider>(context, listen: false).userData;
+
     setState(() {
       _isTyping = true;
     });
-    
-    String greeting = "Hello! I'm your Mimos Uterinos AI health coach. How can I help you today?";
-    
+
+    String greeting =
+        "Hello! I'm your Mimos Uterinos AI health coach. How can I help you today?";
+
     if (userData != null) {
-      greeting = "Hello ${userData.name}! I'm your Mimos Uterinos AI health coach. I'm here to provide personalized insights based on your cycle data. How can I help you today?";
+      greeting =
+          "Hello ${userData.name}! I'm your Mimos Uterinos AI health coach. I'm here to provide personalized insights based on your cycle data. How can I help you today?";
     }
-    
+
     // Simulate AI typing delay
     await Future.delayed(const Duration(seconds: 1));
-    
+
     setState(() {
       _messages.add({
         'isUser': false,
@@ -144,11 +155,12 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
 
   void _sendMessage(String message) async {
     if (message.trim().isEmpty) return;
-    
+
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUser = authProvider.currentUser;
-    final userData = Provider.of<UserDataProvider>(context, listen: false).userData;
-    
+    final userData =
+        Provider.of<UserDataProvider>(context, listen: false).userData;
+
     if (currentUser == null) {
       setState(() {
         _messages.add({
@@ -159,7 +171,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
       });
       return;
     }
-    
+
     setState(() {
       // Add user message
       _messages.add({
@@ -167,38 +179,39 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
         'message': message,
         'timestamp': DateTime.now(),
       });
-      
+
       // Clear input field
       _messageController.clear();
-      
+
       // Show typing indicator
       _isTyping = true;
     });
-    
+
     // Scroll to bottom
     _scrollToBottom();
-    
+
     try {
       print('🔄 Sending message to server API...');
-      
-      // First try to send message to server API
+
+      // Updated API call with correct parameters
       final response = await ApiService.sendChatMessage(
         userId: currentUser.id,
         message: message,
+        chatId: _currentChatId, // Pass chatId as parameter
       );
-      
+
       if (response != null && response['success'] == true) {
         // Server API response successful
         final chatData = response['data'];
         _currentChatId = chatData['id'];
-        
+
         final messages = chatData['messages'] as List<dynamic>;
         final lastMessage = messages.last;
-        
+
         if (lastMessage['role'] == 'assistant') {
           setState(() {
             _isTyping = false;
-            
+
             // Add server AI response
             _messages.add({
               'isUser': false,
@@ -207,15 +220,18 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
               'id': lastMessage['id'],
             });
           });
-          
+
           print('✅ Received server AI response');
+
+          // Refresh chat history (but don't reload current messages)
+          _loadChatHistoryOnly();
         }
       } else {
         throw Exception('Server API failed, falling back to local AI');
       }
     } catch (e) {
       print('⚠️ Server API failed, using local AI service: $e');
-      
+
       try {
         // Fallback to local AI service
         if (userData != null) {
@@ -223,10 +239,10 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
             message,
             userData,
           );
-          
+
           setState(() {
             _isTyping = false;
-            
+
             // Add local AI response
             _messages.add({
               'isUser': false,
@@ -234,29 +250,53 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
               'timestamp': DateTime.now(),
             });
           });
-          
+
           print('✅ Received local AI response');
         } else {
           throw Exception('No user data available for local AI');
         }
       } catch (localError) {
         print('❌ Both server and local AI failed: $localError');
-        
+
         setState(() {
           _isTyping = false;
-          
+
           // Add error message
           _messages.add({
             'isUser': false,
-            'message': "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please check your internet connection and try again later.",
+            'message':
+                "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please check your internet connection and try again later.",
             'timestamp': DateTime.now(),
           });
         });
       }
     }
-    
+
     // Scroll to bottom after response
     _scrollToBottom();
+  }
+
+  Future<void> _loadChatHistoryOnly() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUser;
+
+      if (currentUser == null) return;
+
+      final response = await ApiService.getChatHistory(
+        userId: currentUser.id,
+      );
+
+      if (response != null && response['success'] == true) {
+        final data = response['data'] as List<dynamic>;
+
+        setState(() {
+          _chatHistory = data.cast<Map<String, dynamic>>();
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading chat history only: $e');
+    }
   }
 
   void _scrollToBottom() {
@@ -271,7 +311,21 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
     });
   }
 
-  void _clearChat() async {
+  void _startNewChat() {
+    setState(() {
+      _messages.clear();
+      _currentChatId = null;
+    });
+    _addInitialGreeting();
+    Navigator.pop(context); // Close drawer
+  }
+
+  void _loadChatFromHistory(Map<String, dynamic> chatData) {
+    _loadChatMessages(chatData);
+    Navigator.pop(context); // Close drawer
+  }
+
+  void _clearCurrentChat() async {
     if (_currentChatId == null) {
       // Clear local messages only
       setState(() {
@@ -280,12 +334,13 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
       _addInitialGreeting();
       return;
     }
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Clear Chat"),
-        content: const Text("Are you sure you want to clear this conversation?"),
+        content:
+            const Text("Are you sure you want to clear this conversation?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -294,19 +349,20 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              
+
               try {
                 await ApiService.deleteChatConversation(
                   chatId: _currentChatId!,
                 );
-                
+
                 setState(() {
                   _messages.clear();
                   _currentChatId = null;
                 });
-                
+
                 _addInitialGreeting();
-                
+                _loadChatHistory(); // Refresh chat history
+
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text("Chat cleared successfully"),
@@ -327,6 +383,194 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: Column(
+        children: [
+          // Fixed header height and added flex to prevent overflow
+          Container(
+            height: 100, // Reduced from 120 to prevent overflow
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.primary,
+                  AppColors.secondary,
+                ],
+              ),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8), // Reduced padding
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment:
+                      MainAxisAlignment.center, // Changed from end to center
+                  children: [
+                    const Icon(
+                      Icons.auto_awesome,
+                      color: Colors.white,
+                      size: 24, // Reduced from 28
+                    ),
+                    const SizedBox(height: 4), // Reduced from 8
+                    const Text(
+                      "Chat History",
+                      style: TextStyle(
+                        // Use plain TextStyle instead of TextStyles.heading3
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // New Chat Button
+          ListTile(
+            leading:
+                const Icon(Icons.add_circle_outline, color: AppColors.primary),
+            title: const Text("New Chat"),
+            onTap: _startNewChat,
+          ),
+
+          const Divider(),
+
+          // Chat History - Added Flexible to prevent overflow
+          Flexible(
+            // Changed from Expanded to Flexible
+            child: _chatHistory.isEmpty
+                ? const Center(
+                    child: Text(
+                      "No chat history yet",
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true, // Added shrinkWrap
+                    itemCount: _chatHistory.length,
+                    itemBuilder: (context, index) {
+                      final chat = _chatHistory[index];
+                      final messages = chat['messages'] as List<dynamic>;
+                      final lastMessage = messages.isNotEmpty
+                          ? messages.last['content'] as String
+                          : 'Empty conversation';
+                      final isCurrentChat = chat['id'] == _currentChatId;
+
+                      return Container(
+                        color: isCurrentChat
+                            ? AppColors.primary.withOpacity(0.1)
+                            : null,
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.chat_bubble_outline,
+                            color:
+                                isCurrentChat ? AppColors.primary : Colors.grey,
+                          ),
+                          title: Text(
+                            lastMessage.length > 30
+                                ? '${lastMessage.substring(0, 30)}...'
+                                : lastMessage,
+                            style: TextStyle(
+                              fontWeight: isCurrentChat
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                          subtitle: Text(
+                            _formatChatDate(DateTime.parse(chat['updatedAt'])),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          onTap: () => _loadChatFromHistory(chat),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 20),
+                            onPressed: () => _deleteChatFromHistory(chat['id']),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          const Divider(),
+
+          // Clear Current Chat - Made this conditional and compact
+          if (_messages.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(
+                  bottom: 8), // Added padding to prevent overflow
+              child: ListTile(
+                leading:
+                    const Icon(Icons.clear_all, color: Colors.red, size: 20),
+                title: const Text(
+                  "Clear Current Chat",
+                  style: TextStyle(
+                      color: Colors.red, fontSize: 14), // Reduced font size
+                ),
+                onTap: _clearCurrentChat,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 4), // Reduced padding
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _formatChatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return "${date.hour}:${date.minute.toString().padLeft(2, '0')}";
+    } else if (difference.inDays == 1) {
+      return "Yesterday";
+    } else if (difference.inDays < 7) {
+      return "${difference.inDays} days ago";
+    } else {
+      return "${date.day}/${date.month}/${date.year}";
+    }
+  }
+
+  void _deleteChatFromHistory(String chatId) async {
+    try {
+      await ApiService.deleteChatConversation(chatId: chatId);
+
+      setState(() {
+        _chatHistory.removeWhere((chat) => chat['id'] == chatId);
+
+        // If we deleted the current chat, clear it
+        if (_currentChatId == chatId) {
+          _messages.clear();
+          _currentChatId = null;
+          _addInitialGreeting();
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Chat deleted successfully"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to delete chat: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -350,14 +594,16 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
         title: "Mimos Uterinos AI Coach",
         showBackButton: true,
         actions: [
-          if (_messages.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: _clearChat,
-              tooltip: "Clear Chat",
+          Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () => Scaffold.of(context).openEndDrawer(),
+              tooltip: "Chat History",
             ),
+          ),
         ],
       ),
+      endDrawer: _buildDrawer(),
       body: Column(
         children: [
           // Chat messages
@@ -371,20 +617,17 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
                   // Typing indicator
                   return _buildTypingIndicator();
                 }
-                
+
                 final message = _messages[index];
                 return _buildMessageBubble(
                   message: message['message'],
                   isUser: message['isUser'],
                   timestamp: message['timestamp'],
-                )
-                .animate()
-                .fadeIn(duration: 300.ms)
-                .slideY(begin: 10, end: 0);
+                ).animate().fadeIn(duration: 300.ms).slideY(begin: 10, end: 0);
               },
             ),
           ),
-          
+
           // Suggested questions
           if (_messages.length < 2)
             Container(
@@ -432,10 +675,10 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
                 ],
               ),
             )
-            .animate()
-            .fadeIn(delay: 500.ms, duration: 800.ms)
-            .slideY(delay: 500.ms, begin: 20, end: 0),
-          
+                .animate()
+                .fadeIn(delay: 500.ms, duration: 800.ms)
+                .slideY(delay: 500.ms, begin: 20, end: 0),
+
           // Message input
           Container(
             padding: const EdgeInsets.all(16),
@@ -470,7 +713,8 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
                         enabled: !_isTyping,
                         onSubmitted: (value) => _sendMessage(value),
                         decoration: InputDecoration(
-                          hintText: _isTyping ? "AI is typing..." : "Ask Mimos AI...",
+                          hintText:
+                              _isTyping ? "AI is typing..." : "Ask Mimos AI...",
                           hintStyle: TextStyles.body2.copyWith(
                             color: AppColors.textSecondary.withOpacity(0.5),
                           ),
@@ -506,7 +750,8 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: (_isTyping ? Colors.grey : AppColors.primary).withOpacity(0.3),
+                          color: (_isTyping ? Colors.grey : AppColors.primary)
+                              .withOpacity(0.3),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -517,9 +762,11 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
                         _isTyping ? Icons.hourglass_empty : Icons.send_rounded,
                         color: Colors.white,
                       ),
-                      onPressed: _isTyping ? null : () {
-                        _sendMessage(_messageController.text);
-                      },
+                      onPressed: _isTyping
+                          ? null
+                          : () {
+                              _sendMessage(_messageController.text);
+                            },
                     ),
                   ),
                 ],
@@ -539,7 +786,8 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser)
@@ -559,18 +807,22 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
                 ),
               ),
             ),
-          
           Flexible(
             child: Column(
-              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: isUser ? AppColors.primary : Colors.white,
                     borderRadius: BorderRadius.circular(16).copyWith(
-                      bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(0),
-                      bottomRight: isUser ? const Radius.circular(0) : const Radius.circular(16),
+                      bottomLeft: isUser
+                          ? const Radius.circular(16)
+                          : const Radius.circular(0),
+                      bottomRight: isUser
+                          ? const Radius.circular(0)
+                          : const Radius.circular(16),
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -587,9 +839,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
                     ),
                   ),
                 ),
-                
                 const SizedBox(height: 4),
-                
                 Text(
                   "${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}",
                   style: TextStyles.caption.copyWith(
@@ -599,7 +849,6 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
               ],
             ),
           ),
-          
           if (isUser)
             Container(
               width: 36,
@@ -645,7 +894,6 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
               ),
             ),
           ),
-          
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -686,22 +934,22 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
         shape: BoxShape.circle,
       ),
     )
-    .animate(
-      onPlay: (controller) => controller.repeat(),
-    )
-    .scale(
-      begin: const Offset(0.5, 0.5),
-      end: const Offset(1, 1),
-      duration: 600.ms,
-      delay: Duration(milliseconds: delay),
-      curve: Curves.easeInOut,
-    )
-    .then()
-    .scale(
-      begin: const Offset(1, 1),
-      end: const Offset(0.5, 0.5),
-      duration: 600.ms,
-      curve: Curves.easeInOut,
-    );
+        .animate(
+          onPlay: (controller) => controller.repeat(),
+        )
+        .scale(
+          begin: const Offset(0.5, 0.5),
+          end: const Offset(1, 1),
+          duration: 600.ms,
+          delay: Duration(milliseconds: delay),
+          curve: Curves.easeInOut,
+        )
+        .then()
+        .scale(
+          begin: const Offset(1, 1),
+          end: const Offset(0.5, 0.5),
+          duration: 600.ms,
+          curve: Curves.easeInOut,
+        );
   }
 }
