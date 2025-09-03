@@ -455,16 +455,19 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       print('🔄 Loading journal recommendations for user: $userId');
-      final response = await ApiService.getJournalRecommendations(userId: userId);
+      final response =
+          await ApiService.getJournalRecommendations(userId: userId);
 
       if (response != null && response['success'] == true) {
         setState(() {
-          _journalRecommendations = List<Map<String, dynamic>>.from(response['data']['recommendations'] ?? []);
+          _journalRecommendations = List<Map<String, dynamic>>.from(
+              response['data']['recommendations'] ?? []);
           _currentCyclePhase = response['data']['cyclePhase'] ?? 'unknown';
           _isLoadingJournalRecommendations = false;
         });
 
-        print('✅ Journal recommendations loaded: ${_journalRecommendations.length} items');
+        print(
+            '✅ Journal recommendations loaded: ${_journalRecommendations.length} items');
         print('🔄 Current cycle phase: $_currentCyclePhase');
       } else {
         print('❌ Failed to load journal recommendations');
@@ -483,7 +486,8 @@ class _HomeScreenState extends State<HomeScreen>
           'id': 'cramp-relief',
           'title': 'Coping with cramps',
           'subtitle': 'Quick pain relief tips',
-          'content': 'Heat therapy, gentle movement, and anti-inflammatory foods can provide natural cramp relief during your menstrual cycle.',
+          'content':
+              'Heat therapy, gentle movement, and anti-inflammatory foods can provide natural cramp relief during your menstrual cycle.',
           'category': 'pain-relief',
           'thumbnail': '🔥',
           'image': 'assets/images/jornal1.png',
@@ -500,7 +504,8 @@ class _HomeScreenState extends State<HomeScreen>
           'id': 'cycle-tracking',
           'title': 'Managing Multiple Symptoms: Breast...',
           'subtitle': 'Understanding your unique patterns',
-          'content': 'Regular cycle tracking helps you understand your body\'s patterns and predict how you might feel throughout your cycle.',
+          'content':
+              'Regular cycle tracking helps you understand your body\'s patterns and predict how you might feel throughout your cycle.',
           'category': 'education',
           'thumbnail': '📊',
           'image': 'assets/images/jornal2.png',
@@ -511,7 +516,8 @@ class _HomeScreenState extends State<HomeScreen>
           'id': 'mood-management',
           'title': 'Managing Multiple Symptoms:...',
           'subtitle': 'Emotional wellness during your cycle',
-          'content': 'Understanding and managing emotional changes throughout your menstrual cycle with practical strategies.',
+          'content':
+              'Understanding and managing emotional changes throughout your menstrual cycle with practical strategies.',
           'category': 'mood',
           'thumbnail': '💭',
           'image': 'assets/images/jornal3.png',
@@ -541,15 +547,15 @@ class _HomeScreenState extends State<HomeScreen>
 
   int _getCurrentCycleDayForPhase() {
     if (_userProfile == null) return 1;
-    
+
     final lastPeriodDateString = _userProfile?['lastPeriodDate'];
     final cycleLength = _userProfile?['cycleLength'] ?? 28;
-    
+
     if (lastPeriodDateString == null) return 1;
-    
+
     final lastPeriodDate = DateTime.tryParse(lastPeriodDateString);
     if (lastPeriodDate == null) return 1;
-    
+
     final today = DateTime.now();
     final daysSinceLastPeriod = today.difference(lastPeriodDate).inDays;
     return ((daysSinceLastPeriod % cycleLength) + 1).toInt();
@@ -830,9 +836,9 @@ class _HomeScreenState extends State<HomeScreen>
 
                     // Top section with profile and date
                     Positioned(
-                      top: 60,
-                      left: 20,
-                      right: 20,
+                      top: 80,
+                      left: 30,
+                      right: 30,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -889,7 +895,7 @@ class _HomeScreenState extends State<HomeScreen>
 
                     // Calendar strip (horizontal date selector)
                     Positioned(
-                      top: 140,
+                      top: 180,
                       left: 0,
                       right: 0,
                       child: _buildEnhancedCalendarStrip(),
@@ -897,7 +903,7 @@ class _HomeScreenState extends State<HomeScreen>
 
                     // Period information section
                     Positioned(
-                      bottom: 80,
+                      bottom: 60,
                       left: 0,
                       right: 0,
                       child: Column(
@@ -910,7 +916,7 @@ class _HomeScreenState extends State<HomeScreen>
                               fontWeight: FontWeight.w300,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 1),
                           Text(
                             _getCycleStatusText().contains("Day")
                                 ? _getCycleStatusText().split(" ")[1]
@@ -936,19 +942,19 @@ class _HomeScreenState extends State<HomeScreen>
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
-                                foregroundColor: const Color(0xFFE91E63),
+                                foregroundColor: const Color(0xFFC75385),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(25),
                                 ),
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 32,
-                                  vertical: 12,
+                                  horizontal: 22,
+                                  vertical: 10,
                                 ),
                               ),
                               child: const Text(
-                                "Edit period dates",
+                                "Edit period",
                                 style: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -972,11 +978,11 @@ class _HomeScreenState extends State<HomeScreen>
             // Quick Actions
             const SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: EdgeInsets.fromLTRB(20, 40, 20, 10),
                 child: Text(
-                  "Quick Actions",
+                  "Quick Action",
                   style: TextStyle(
-                    fontSize: 18,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: AppColors.textPrimary,
                   ),
@@ -1205,7 +1211,7 @@ class _HomeScreenState extends State<HomeScreen>
         List.generate(7, (index) => today.subtract(Duration(days: 3 - index)));
 
     return Container(
-      height: 100,
+      height: 120,
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -1238,17 +1244,18 @@ class _HomeScreenState extends State<HomeScreen>
                 Text(
                   DateFormat('E').format(date)[0],
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    color:
+                        isToday ? Colors.white : Colors.black.withOpacity(0.7),
+                    fontSize: isToday ? 24 : 18,
+                    fontWeight: isToday ? FontWeight.bold : FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
 
                 // Date circle
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: isToday
@@ -1269,10 +1276,10 @@ class _HomeScreenState extends State<HomeScreen>
                       children: [
                         if (isToday)
                           Container(
-                            width: 32,
-                            height: 32,
+                            width: 42,
+                            height: 42,
                             decoration: const BoxDecoration(
-                              color: Color(0xFFE91E63),
+                              color: Color(0xFFC75385),
                               shape: BoxShape.circle,
                             ),
                             child: Center(
@@ -1280,7 +1287,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 date.day.toString(),
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 16,
+                                  fontSize: 22,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -1292,9 +1299,9 @@ class _HomeScreenState extends State<HomeScreen>
                             style: TextStyle(
                               color: isPeriodDay
                                   ? Colors.white
-                                  : Colors.white.withOpacity(0.9),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                                  : Colors.white.withOpacity(0.8),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
 
@@ -1323,7 +1330,7 @@ class _HomeScreenState extends State<HomeScreen>
                     "TODAY",
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -1381,10 +1388,10 @@ class _HomeScreenState extends State<HomeScreen>
       onTap: onTap,
       child: Container(
         width: 120,
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: AppColors.primary.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
               color: color.withOpacity(0.2),
@@ -1397,7 +1404,7 @@ class _HomeScreenState extends State<HomeScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 shape: BoxShape.circle,
@@ -1405,16 +1412,16 @@ class _HomeScreenState extends State<HomeScreen>
               child: Icon(
                 icon,
                 color: color,
-                size: 24,
+                size: 28,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
               title,
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primary,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color.fromARGB(255, 110, 110, 110),
               ),
               textAlign: TextAlign.center,
             ),
@@ -1846,7 +1853,7 @@ class _HomeScreenState extends State<HomeScreen>
     // Split the text and format it with bold headers
     final parts = text.split('**');
     List<TextSpan> spans = [];
-    
+
     for (int i = 0; i < parts.length; i++) {
       if (i % 2 == 0) {
         // Regular text
@@ -1871,7 +1878,7 @@ class _HomeScreenState extends State<HomeScreen>
         ));
       }
     }
-    
+
     return RichText(
       text: TextSpan(children: spans),
     );
@@ -2050,13 +2057,13 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildJournalRecommendationsSection() {
-    final featuredRecommendation = _journalRecommendations.isNotEmpty 
+    final featuredRecommendation = _journalRecommendations.isNotEmpty
         ? _journalRecommendations.firstWhere(
             (rec) => rec['isFeatured'] == true,
             orElse: () => _journalRecommendations.first,
           )
         : null;
-    
+
     final otherRecommendations = _journalRecommendations
         .where((rec) => rec['id'] != featuredRecommendation?['id'])
         .take(2)
@@ -2066,7 +2073,7 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         // Header
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
+          margin: const EdgeInsets.symmetric(horizontal: 20).copyWith(top: 40),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -2081,25 +2088,26 @@ class _HomeScreenState extends State<HomeScreen>
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  if (_getCurrentCycleDayForPhase() > 0)
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Day ${_getCurrentCycleDayForPhase()}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
                 ],
               ),
+              if (_getCurrentCycleDayForPhase() > 0)
+                Container(
+                  margin: const EdgeInsets.only(top: 4, left: 90),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Day ${_getCurrentCycleDayForPhase()}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
               TextButton(
                 onPressed: () {
                   _navigateToJournalScreen();
@@ -2115,16 +2123,21 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
         ),
-        
-        const SizedBox(height: 16),
+
+        const SizedBox(height: 10),
 
         // Search Bar
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          margin: const EdgeInsets.symmetric(horizontal: 70)
+              .copyWith(top: 2, bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: Colors.pink, // border color
+              width: 1, // border width
+            ),
+            color: const Color.fromARGB(255, 249, 224, 241),
+            borderRadius: BorderRadius.circular(30),
           ),
           child: Row(
             children: [
@@ -2152,6 +2165,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
             ],
+            
           ),
         ),
 
@@ -2190,7 +2204,6 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
               const SizedBox(height: 16),
-              
               if (_isLoadingJournalRecommendations)
                 Row(
                   children: [
@@ -2339,7 +2352,8 @@ class _HomeScreenState extends State<HomeScreen>
                     children: [
                       if (article['isCommunityGenerated'] == true)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: const Color(0xFFE91E63),
                             borderRadius: BorderRadius.circular(12),
@@ -2427,7 +2441,8 @@ class _HomeScreenState extends State<HomeScreen>
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 8),
                         elevation: 0,
                       ),
                       child: const Text(
@@ -2470,7 +2485,8 @@ class _HomeScreenState extends State<HomeScreen>
             Container(
               height: 100,
               decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -2484,7 +2500,8 @@ class _HomeScreenState extends State<HomeScreen>
                 children: [
                   if (article['image'] != null)
                     ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(16)),
                       child: Image.asset(
                         article['image'],
                         width: double.infinity,
@@ -2519,13 +2536,13 @@ class _HomeScreenState extends State<HomeScreen>
                         style: const TextStyle(fontSize: 32),
                       ),
                     ),
-                  
                   if (article['isCommunityGenerated'] == true)
                     Positioned(
                       top: 8,
                       left: 8,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFFE91E63),
                           borderRadius: BorderRadius.circular(8),
@@ -2609,7 +2626,8 @@ class _HomeScreenState extends State<HomeScreen>
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(20)),
                   ),
                   child: Row(
                     children: [
@@ -2630,7 +2648,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ],
                   ),
                 ),
-                
+
                 // Content
                 Expanded(
                   child: SingleChildScrollView(
@@ -2649,7 +2667,6 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                           const SizedBox(height: 12),
                         ],
-                        
                         Text(
                           article['content'] ?? '',
                           style: const TextStyle(
@@ -2658,7 +2675,6 @@ class _HomeScreenState extends State<HomeScreen>
                             color: AppColors.textSecondary,
                           ),
                         ),
-                        
                         if (article['tips'] != null) ...[
                           const SizedBox(height: 20),
                           const Text(
@@ -2705,7 +2721,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   ),
                 ),
-                
+
                 // Action buttons
                 Container(
                   padding: const EdgeInsets.all(20),
@@ -2760,7 +2776,8 @@ class _HomeScreenState extends State<HomeScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const AiCoachScreen(), // Temporary - replace with JournalScreen
+        builder: (context) =>
+            const AiCoachScreen(), // Temporary - replace with JournalScreen
       ),
     );
   }
@@ -2771,7 +2788,8 @@ class _HomeScreenState extends State<HomeScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const AiCoachScreen(), // Temporary - replace with JournalSearchScreen
+        builder: (context) =>
+            const AiCoachScreen(), // Temporary - replace with JournalSearchScreen
       ),
     );
   }
