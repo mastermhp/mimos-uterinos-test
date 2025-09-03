@@ -1596,6 +1596,39 @@ class ApiService {
     }
   }
 
+  // Add this method to the ApiService class
+
+// Search journal articles
+  static Future<Map<String, dynamic>?> searchJournalArticles({
+    required String userId,
+    required String query,
+  }) async {
+    try {
+      print('🔄 Searching journal articles for query: "$query"');
+
+      final headers = await _getHeaders(includeAuth: true);
+      final response = await http
+          .get(
+            Uri.parse(
+                '$baseUrl/journal/search?userId=$userId&query=${Uri.encodeComponent(query)}'),
+            headers: headers,
+          )
+          .timeout(timeout);
+
+      print('📡 Journal Search Response Status: ${response.statusCode}');
+      print('📡 Journal Search Response: ${response.body}');
+
+      return await _handleResponse(response);
+    } on SocketException {
+      throw ApiException(message: 'No internet connection');
+    } on HttpException {
+      throw ApiException(message: 'Network error occurred');
+    } catch (e) {
+      print('❌ Search journal articles error: $e');
+      throw ApiException(message: 'Failed to search articles: ${e.toString()}');
+    }
+  }
+
   // Get journal recommendations
   static Future<Map<String, dynamic>?> getJournalRecommendations({
     required String userId,

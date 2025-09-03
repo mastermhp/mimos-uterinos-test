@@ -262,6 +262,25 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
     }
   }
 
+  void _navigateToNewDateScreen() {
+    // Assuming _cycles is sorted with most recent first
+    DateTime? lastPeriodDate;
+    if (_cycles.isNotEmpty) {
+      lastPeriodDate = DateTime.parse(_cycles.first['startDate']);
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NewDateScreen(
+          cycleLength: _currentCycleLength,
+          periodLength: _currentPeriodLength,
+          lastPeriodDate: lastPeriodDate,
+        ),
+      ),
+    ).then((_) => _loadCycleData());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -310,13 +329,7 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                               children: [
                                 IconButton(
                                   onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const NewDateScreen(),
-                                      ),
-                                    ).then((_) => _loadCycleData());
+                                    _navigateToNewDateScreen();
                                   },
                                   icon: const Icon(Icons.calendar_month),
                                   color: AppColors.primary,
@@ -847,13 +860,7 @@ class _CycleCalendarScreenState extends State<CycleCalendarScreen> {
                                 Expanded(
                                   child: AnimatedGradientButton(
                                     onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              const NewDateScreen(),
-                                        ),
-                                      ).then((_) => _loadCycleData());
+                                      _navigateToNewDateScreen();
                                     },
                                     text: "Set Period Date",
                                     icon: Icons.calendar_today_rounded,

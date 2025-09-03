@@ -10,48 +10,131 @@ import 'package:menstrual_health_ai/providers/auth_provider.dart';
 import 'package:menstrual_health_ai/services/api_service.dart';
 
 class NewDateScreen extends StatefulWidget {
-  const NewDateScreen({super.key});
+  final int? cycleLength;
+  final int? periodLength;
+  final DateTime? lastPeriodDate;
+
+  const NewDateScreen(
+      {super.key, this.cycleLength, this.periodLength, this.lastPeriodDate});
 
   @override
   State<NewDateScreen> createState() => _NewDateScreenState();
 }
 
 class _NewDateScreenState extends State<NewDateScreen> {
-  DateTime _focusedDay = DateTime.now();
-  DateTime _selectedDay = DateTime.now();
+  late DateTime _focusedDay;
+  late DateTime _selectedDay;
   bool _isLoading = false;
+  bool _isLoadingLastPeriod = true;
+  late int _cycleLength;
+  late int _periodLength;
+
+  @override
+  void initState() {
+    super.initState();
+    _cycleLength = widget.cycleLength ?? 28; // Default if not provided
+    _periodLength = widget.periodLength ?? 5; // Default if not provided
+
+    // Initialize with passed date or today
+    _selectedDay = widget.lastPeriodDate ?? DateTime.now();
+    _focusedDay = _selectedDay;
+
+    // If no date was passed, try to fetch the last period date
+    if (widget.lastPeriodDate == null) {
+      _fetchLastPeriodDate();
+    } else {
+      _isLoadingLastPeriod = false;
+    }
+  }
+
+  Future<void> _fetchLastPeriodDate() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUser;
+
+      if (currentUser == null) {
+        setState(() {
+          _isLoadingLastPeriod = false;
+        });
+        return;
+      }
+
+      print('🔄 Fetching last period date for user: ${currentUser.id}');
+
+      final response = await ApiService.getCycles(
+        userId: currentUser.id,
+      );
+
+      if (response != null &&
+          response['success'] == true &&
+          response['data'] is List &&
+          (response['data'] as List).isNotEmpty) {
+        final cycles = response['data'] as List;
+        // Get the most recent cycle
+        final lastCycle = cycles.first;
+        final lastPeriodDate = DateTime.parse(lastCycle['startDate']);
+
+        print('📅 Last period date found: ${lastCycle['startDate']}');
+
+        // Update the selected date to the last period date
+        setState(() {
+          _selectedDay = lastPeriodDate;
+          _focusedDay = lastPeriodDate;
+
+          // Also update cycle length and period length if available
+          _cycleLength = lastCycle['cycleLength'] ?? _cycleLength;
+          _periodLength = lastCycle['periodLength'] ?? _periodLength;
+        });
+      } else {
+        print('ℹ️ No previous cycles found or error fetching cycles');
+      }
+    } catch (e) {
+      print('❌ Error fetching last period date: $e');
+    } finally {
+      setState(() {
+        _isLoadingLastPeriod = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header with back button
-                _buildHeader(),
+      body: _isLoadingLastPeriod
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+            )
+          : SafeArea(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header with back button
+                      _buildHeader(),
 
-                // Calendar card
-                _buildCalendarCard(),
+                      // Calendar card
+                      _buildCalendarCard(),
 
-                const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                // Selected date card
-                _buildSelectedDateCard(),
+                      // Selected date card
+                      _buildSelectedDateCard(),
 
-                const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                // Set button
-                _buildSetButton(),
-              ],
+                      // Set button
+                      _buildSetButton(),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -232,13 +315,26 @@ class _NewDateScreenState extends State<NewDateScreen> {
                 ),
               ),
               child: Center(
-                child: Text(
-                  DateFormat('d MMMM, yyyy').format(_selectedDay),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
-                  ),
+                child: Column(
+                  children: [
+                    Text(
+                      DateFormat('d MMMM, yyyy').format(_selectedDay),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Cycle: $_cycleLength days | Period: $_periodLength days",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -254,7 +350,12 @@ class _NewDateScreenState extends State<NewDateScreen> {
   Widget _buildSetButton() {
     return AnimatedGradientButton(
       text: _isLoading ? "SETTING..." : "SET PERIOD DATE",
-      onPressed: _isLoading ? null : _setPeriodDate,
+      onPressed: _isLoading
+          ? null
+          : () {
+              print('🖱️ Set button pressed!');
+              _setPeriodDate();
+            },
     )
         .animate()
         .fadeIn(duration: 800.ms, delay: 800.ms)
@@ -263,12 +364,16 @@ class _NewDateScreenState extends State<NewDateScreen> {
 
   Future<void> _setPeriodDate() async {
     try {
+      print('🔄 Starting _setPeriodDate function...');
+
       setState(() {
         _isLoading = true;
       });
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUser;
+
+      print('👤 Current user: ${currentUser?.id ?? "null"}');
 
       if (currentUser == null) {
         print('❌ No current user found');
@@ -287,27 +392,33 @@ class _NewDateScreenState extends State<NewDateScreen> {
       // Format date as YYYY-MM-DD to ensure proper API handling
       final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDay);
 
-      print('🔄 Setting new period date: $formattedDate');
+      print('📅 Setting new period date: $formattedDate');
+      print(
+          '📊 Using cycle length: $_cycleLength, period length: $_periodLength');
 
-      // Create cycle data
+      // Create cycle data with the values passed from the previous screen
       final newCycle = {
         "userId": currentUser.id,
         "startDate": formattedDate,
-        "cycleLength": 28, // Default cycle length
-        "periodLength": 5, // Default period length
+        "cycleLength": _cycleLength,
+        "periodLength": _periodLength,
         "flow": "medium",
         "mood": "normal",
         "symptoms": [],
         "notes": "Period date set from calendar"
       };
 
+      print('📤 Sending cycle data to API: $newCycle');
+
       // Send to API
       final response = await ApiService.addCycle(newCycle);
+
+      print('📥 API response received: $response');
 
       // Check for success directly from the response
       if (response != null && response['success'] == true) {
         print('✅ Successfully set period date: $formattedDate');
-        print('Response data: ${response['data']}');
+        print('✅ Response data: ${response['data']}');
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -318,6 +429,8 @@ class _NewDateScreenState extends State<NewDateScreen> {
         Navigator.pop(context, true); // Return success to previous screen
       } else {
         print('❌ Failed to set period date');
+        print('❌ Response details: $response');
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Failed to set period date'),
@@ -327,6 +440,8 @@ class _NewDateScreenState extends State<NewDateScreen> {
       }
     } catch (e) {
       print('❌ Error setting period date: $e');
+      print('❌ Stack trace: ${StackTrace.current}');
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),
@@ -337,6 +452,7 @@ class _NewDateScreenState extends State<NewDateScreen> {
       setState(() {
         _isLoading = false;
       });
+      print('🏁 _setPeriodDate function completed');
     }
   }
 }
